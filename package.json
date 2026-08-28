@@ -1,0 +1,30 @@
+{
+  "name": "crypto-forensics",
+  "version": "1.0.0",
+  "description": "an offline dashboard to monitor bitcoin transactions with integrated geo IP",
+  "keywords": [
+    "bitcoin",
+    "crypto",
+    "forensics",
+    "electron.js",
+    "offline"
+  ],
+  "homepage": "https://github.com/calebjubal/crypto-forensics#readme",
+  "bugs": {
+    "url": "https://github.com/calebjubal/crypto-forensics/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/calebjubal/crypto-forensics.git"
+  },
+  "license": "ISC",
+  "author": "bb9kairo",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0"
+  }
+}
