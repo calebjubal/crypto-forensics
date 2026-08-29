@@ -1,7 +1,7 @@
 {
-  "name": "crypto-forensics",
+  "name": "satoshi-trace",
   "version": "1.0.0",
-  "description": "an offline dashboard to monitor bitcoin transactions with integrated geo IP",
+  "description": "Port-free offline desktop system for Bitcoin blockchain and network forensics",
   "keywords": [
     "bitcoin",
     "crypto",
@@ -26,7 +26,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-sqlite --test",
+    "verify": "npm test && npm run package"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",
@@ -41,6 +42,10 @@
     "electron": "^44.0.0"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "csv-parse": "6.1.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "saxes": "6.0.0",
+    "stream-chain": "2.2.5",
+    "stream-json": "1.9.1"
   }
 }
