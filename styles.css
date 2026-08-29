@@ -241,7 +241,7 @@ nav {
   color: #84af9f;
 }
 .airgap-status i,
-.offline-pill i,
+.connectivity-pill i,
 .status-dot {
   display: inline-block;
   width: 5px;
@@ -311,14 +311,33 @@ nav {
   align-items: center;
   gap: 20px;
 }
-.offline-pill {
-  color: #377f70;
-  background: #f0f8f4;
+.connectivity-pill {
   padding: 7px 10px;
-  border: 1px solid #daeee5;
   border-radius: 5px;
   font-size: 10px;
   font-weight: 600;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+.connectivity-pill[data-online="true"] {
+  color: #246b5c;
+  background: #eaf7f1;
+  border-color: #bfe6d5;
+}
+.connectivity-pill[data-online="true"] i {
+  background: #248675;
+  box-shadow: 0 0 0 3px rgb(36 134 117 / 12%);
+}
+.connectivity-pill[data-online="false"] {
+  color: #a9383e;
+  background: #fff0f1;
+  border-color: #f0c4c7;
+}
+.connectivity-pill[data-online="false"] i {
+  background: #cc4c51;
+  box-shadow: 0 0 0 3px rgb(204 76 81 / 12%);
 }
 .top-divider {
   height: 22px;

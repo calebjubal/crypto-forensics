@@ -179,6 +179,25 @@ window.addEventListener("error", (event) => {
     event.error || new Error(event.message || "Unexpected application error."),
   );
 });
+const connectivityPill = document.getElementById("connectivity-pill"),
+  connectivityLabel = document.getElementById("connectivity-label");
+function renderConnectivityStatus() {
+  const online = navigator.onLine;
+  connectivityPill.dataset.online = String(online);
+  connectivityPill.classList.toggle("badge-success", online);
+  connectivityPill.classList.toggle("badge-error", !online);
+  connectivityLabel.textContent = online ? "Online" : "Offline";
+  connectivityPill.setAttribute(
+    "aria-label",
+    `System connectivity: ${online ? "online" : "offline"}`,
+  );
+  connectivityPill.title = online
+    ? "The operating system reports network connectivity. Satoshi Trace remains network-isolated and makes no internet requests."
+    : "The operating system reports no network connectivity. Satoshi Trace remains network-isolated in every state.";
+}
+window.addEventListener("online", renderConnectivityStatus);
+window.addEventListener("offline", renderConnectivityStatus);
+renderConnectivityStatus();
 function heading(e, t, d, a = "") {
   return `<div class="page-heading"><div><div class="eyebrow">${esc(e)}</div><h1>${esc(t)}</h1><p>${esc(d)}</p></div><div class="heading-actions">${a}</div></div>`;
 }

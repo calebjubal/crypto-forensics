@@ -98,8 +98,16 @@
             <strong id="breadcrumb">Overview</strong>
           </div>
           <div class="top-actions">
-            <span class="offline-pill badge badge-success badge-soft"
-              ><i></i> Offline</span
+            <span
+              id="connectivity-pill"
+              class="connectivity-pill badge badge-error badge-soft"
+              data-online="false"
+              role="status"
+              aria-live="polite"
+              aria-label="System connectivity: offline"
+              title="The operating system reports no network connectivity. Satoshi Trace remains network-isolated in every state."
+              ><i aria-hidden="true"></i
+              ><span id="connectivity-label">Offline</span></span
             ><span id="session-user" class="session-user"></span
             ><button
               class="button button-small btn btn-ghost btn-sm"
