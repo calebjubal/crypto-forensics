@@ -11,6 +11,7 @@ const {
   summary,
   page,
   detail,
+  clusterDetail,
   review,
   authenticationStatus,
   createInitialUser,
@@ -197,6 +198,16 @@ test("correlates, trains, clusters and emits explainable leads", async () => {
   assert.ok(JSON.parse(d.transaction.reasons).some((r) => r.points > 0));
   assert.ok(d.sources.length > 0);
   assert.ok(d.observations.length > 0);
+  const clusters = page(db, "clusters", { limit: 1 });
+  assert.ok(clusters.rows.length > 0);
+  const cluster = clusterDetail(db, clusters.rows[0].id);
+  assert.ok(cluster.graph.links.length > 0);
+  assert.ok(cluster.graph.linkTotal >= cluster.graph.links.length);
+  assert.ok(
+    cluster.graph.links.every(
+      (link) => link.address && /^[0-9a-f]{64}$/.test(link.txid),
+    ),
+  );
   review(db, {
     txid: leads.rows[0].txid,
     status: "In review",

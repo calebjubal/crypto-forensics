@@ -531,18 +531,44 @@ function detail(db, txid) {
 function clusterDetail(db, id) {
   const cluster = db.prepare("SELECT * FROM clusters WHERE id=?").get(id);
   if (!cluster) throw new Error("Cluster not found.");
-  return {
-    cluster,
-    members: db
+  const members = db
       .prepare(
         "SELECT address FROM cluster_members WHERE cluster_id=? ORDER BY address LIMIT 250",
       )
       .all(id),
-    transactions: db
+    transactions = db
       .prepare(
-        `SELECT DISTINCT t.txid,t.output_sat,t.coinjoin FROM transactions t JOIN addresses a ON a.txid=t.txid JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=? LIMIT 100`,
+        `SELECT DISTINCT t.txid,t.output_sat,t.coinjoin FROM transactions t JOIN addresses a ON a.txid=t.txid JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=? ORDER BY t.txid LIMIT 100`,
       )
       .all(id),
+    graphMembers = members.slice(0, 120).map((row) => row.address),
+    graphTransactions = transactions.slice(0, 80).map((row) => row.txid);
+  let links = [];
+  if (graphMembers.length && graphTransactions.length) {
+    const memberSlots = graphMembers.map(() => "?").join(","),
+      transactionSlots = graphTransactions.map(() => "?").join(",");
+    links = db
+      .prepare(
+        `SELECT DISTINCT address,txid FROM addresses WHERE address IN (${memberSlots}) AND txid IN (${transactionSlots}) ORDER BY txid,address LIMIT 800`,
+      )
+      .all(...graphMembers, ...graphTransactions);
+  }
+  const linkTotal = db
+    .prepare(
+      `SELECT count(*) AS n FROM (SELECT DISTINCT a.address,a.txid FROM addresses a JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=?)`,
+    )
+    .get(id).n;
+  return {
+    cluster,
+    members,
+    transactions,
+    graph: {
+      links,
+      linkTotal,
+      memberLimit: 120,
+      transactionLimit: 80,
+      edgeLimit: 800,
+    },
   };
 }
 
