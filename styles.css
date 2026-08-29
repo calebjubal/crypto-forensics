@@ -1298,6 +1298,87 @@ dialog::backdrop {
 .detail-graph {
   height: 215px;
 }
+.cluster-graph-shell {
+  overflow: hidden;
+  border: 1px solid #dfe6ef;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+.cluster-graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #e6ebf2;
+  background: #fff;
+}
+.cluster-graph-legend,
+.cluster-graph-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cluster-graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7d8ba0;
+  font-size: 9px;
+}
+.cluster-graph-actions .button[aria-pressed="true"] {
+  border-color: #b9c9de;
+  background: #eef4fb;
+  color: #294c7a;
+}
+.cluster-key {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #17243a;
+}
+.cluster-key.address {
+  border: 1px solid #e88435;
+  border-radius: 3px;
+  background: #fff7ed;
+}
+.cluster-key.link {
+  width: 15px;
+  height: 1px;
+  border-radius: 0;
+  background: #aebbd0;
+}
+.cluster-graph {
+  width: 100%;
+  height: 480px;
+  background: radial-gradient(
+    circle at center,
+    #ffffff 0,
+    #f8fafc 68%,
+    #f3f6fa 100%
+  );
+}
+.cluster-graph-caption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 10px 13px;
+  border-top: 1px solid #e6ebf2;
+  color: #8491a4;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.cluster-graph-caption span:last-child {
+  max-width: 310px;
+  text-align: right;
+}
+.cluster-graph-empty {
+  padding: 70px 20px;
+  color: #8a97a8;
+  text-align: center;
+  font-size: 11px;
+}
 .loading {
   padding: 80px;
   color: #8391a5;
@@ -1702,6 +1783,19 @@ dialog::backdrop {
   }
   .session-user {
     display: none;
+  }
+  .cluster-graph-toolbar,
+  .cluster-graph-caption {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  .cluster-graph-caption span:last-child {
+    max-width: none;
+    text-align: left;
+  }
+  .cluster-graph {
+    height: 390px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

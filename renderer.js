@@ -42,6 +42,7 @@ const state = {
   limit: 25,
   busy: false,
   selectedTx: null,
+  clusterGraph: null,
   username: "",
   authMode: "login",
 };
@@ -535,12 +536,190 @@ function txGraph(d) {
     ];
   return `<div class="graph-wrap detail-graph"><svg viewBox="0 0 700 230" role="img">${nodes.map((n) => `<path class="graph-edge ${n.type === "ip" ? "network" : ""}" d="M${n.x} ${n.y}L350 115"/>`).join("")}<circle class="graph-circle tx" cx="350" cy="115" r="34"/><text class="graph-inner tx" x="350" y="122" text-anchor="middle">₿</text>${nodes.map((n) => `<circle class="graph-circle ${n.type === "wallet" ? "wallet" : ""}" cx="${n.x}" cy="${n.y}" r="18"/><text class="graph-inner ${n.type === "wallet" ? "wallet" : ""}" x="${n.x}" y="${n.y + 4}" text-anchor="middle">${n.type === "wallet" ? "W" : "IP"}</text><text class="graph-label" x="${n.x < 350 ? n.x + 26 : n.x - 26}" y="${n.y + 4}" text-anchor="${n.x < 350 ? "start" : "end"}">${esc(trunc(n.v, 18))}</text>`).join("")}</svg></div><div class="graph-legend"><span><i class="legend-symbol"></i>Observed endpoint</span><span><i class="legend-symbol navy"></i>Exact TXID</span><span><i class="legend-symbol orange"></i>Blockchain address</span><span class="graph-footnote">Associations are not ownership proof</span></div>`;
 }
+function destroyClusterGraph() {
+  state.clusterGraph?.destroy();
+  state.clusterGraph = null;
+}
+function clusterLayout(name) {
+  if (!state.clusterGraph) return;
+  document
+    .querySelectorAll('[data-graph-action="rings"], [data-graph-action="flow"]')
+    .forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.graphAction === name),
+      ),
+    );
+  const options =
+    name === "flow"
+      ? {
+          name: "breadthfirst",
+          directed: false,
+          circle: false,
+          spacingFactor: 1.2,
+          padding: 35,
+          animate: false,
+          fit: true,
+          roots: state.clusterGraph.nodes('[kind = "transaction"]'),
+        }
+      : {
+          name: "concentric",
+          concentric: (node) =>
+            node.data("kind") === "transaction" ? 1000 : node.degree(),
+          levelWidth: () => 500,
+          minNodeSpacing: 22,
+          padding: 35,
+          animate: false,
+          fit: true,
+        };
+  state.clusterGraph.layout(options).run();
+}
+function renderClusterGraph(d) {
+  const container = document.getElementById("cluster-graph"),
+    status = document.getElementById("cluster-graph-selection");
+  if (!container || !d.graph?.links.length) return;
+  if (typeof window.cytoscape !== "function") {
+    status.textContent =
+      "Interactive graph unavailable. The complete evidence lists remain below.";
+    return;
+  }
+  const transactionDetails = new Map(
+      d.transactions.map((transaction) => [transaction.txid, transaction]),
+    ),
+    nodes = new Map(),
+    edges = [];
+  d.graph.links.forEach((link, index) => {
+    const addressId = `address:${link.address}`,
+      transactionId = `transaction:${link.txid}`,
+      transaction = transactionDetails.get(link.txid);
+    if (!nodes.has(addressId))
+      nodes.set(addressId, {
+        data: {
+          id: addressId,
+          kind: "address",
+          reference: link.address,
+          label: trunc(link.address, 21),
+        },
+      });
+    if (!nodes.has(transactionId))
+      nodes.set(transactionId, {
+        data: {
+          id: transactionId,
+          kind: "transaction",
+          reference: link.txid,
+          label: `₿ ${trunc(link.txid, 17)}`,
+          amount: transaction ? btc(transaction.output_sat) : "",
+        },
+      });
+    edges.push({
+      data: {
+        id: `link:${index}`,
+        source: addressId,
+        target: transactionId,
+      },
+    });
+  });
+  destroyClusterGraph();
+  state.clusterGraph = window.cytoscape({
+    container,
+    elements: [...nodes.values(), ...edges],
+    minZoom: 0.15,
+    maxZoom: 3,
+    wheelSensitivity: 0.22,
+    boxSelectionEnabled: false,
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          "font-family": "Inter, Segoe UI, sans-serif",
+          "font-size": 9,
+          "text-valign": "center",
+          "text-halign": "center",
+          "overlay-opacity": 0,
+          "transition-property": "background-color, border-color, opacity",
+          "transition-duration": "120ms",
+        },
+      },
+      {
+        selector: 'node[kind = "address"]',
+        style: {
+          shape: "round-rectangle",
+          width: "label",
+          height: 24,
+          padding: 9,
+          color: "#715334",
+          "background-color": "#fff7ed",
+          "border-width": 1.5,
+          "border-color": "#e88435",
+        },
+      },
+      {
+        selector: 'node[kind = "transaction"]',
+        style: {
+          shape: "ellipse",
+          width: 58,
+          height: 58,
+          color: "#ffffff",
+          "font-size": 8,
+          "font-weight": 600,
+          "text-wrap": "wrap",
+          "text-max-width": 48,
+          "background-color": "#17243a",
+          "border-width": 3,
+          "border-color": "#cbd7e7",
+        },
+      },
+      {
+        selector: "edge",
+        style: {
+          width: 1.2,
+          "line-color": "#cbd5e1",
+          "curve-style": "bezier",
+          opacity: 0.72,
+        },
+      },
+      {
+        selector: "node:selected",
+        style: {
+          color: "#ffffff",
+          "border-width": 4,
+          "border-color": "#5b7bae",
+          "background-color": "#5b7bae",
+        },
+      },
+      {
+        selector: "edge:selected",
+        style: { width: 2.5, "line-color": "#5b7bae", opacity: 1 },
+      },
+    ],
+  });
+  clusterLayout("rings");
+  state.clusterGraph.on("tap", "node", (event) => {
+    const node = event.target,
+      kind = node.data("kind"),
+      reference = node.data("reference");
+    status.textContent =
+      kind === "transaction"
+        ? `Transaction ${reference} · ${node.data("amount") || "value unavailable"} · double-click to inspect`
+        : `Address ${reference} · linked to ${node.degree()} transaction${node.degree() === 1 ? "" : "s"} in this view`;
+  });
+  state.clusterGraph.on("dbltap", 'node[kind = "transaction"]', (event) =>
+    openTx(event.target.data("reference")),
+  );
+  state.clusterGraph.on("tap", (event) => {
+    if (event.target === state.clusterGraph)
+      status.textContent =
+        "Select a node for evidence context. Double-click a transaction to inspect it.";
+  });
+}
 async function openTx(txid) {
   try {
     const d = await api.detail({ txid }),
       t = d.transaction,
       rs = t.reasons ? JSON.parse(t.reasons) : [],
       f = t.features ? JSON.parse(t.features) : {};
+    destroyClusterGraph();
     state.selectedTx = txid;
     document.getElementById("dialog-label").textContent =
       "TRANSACTION EVIDENCE";
@@ -561,9 +740,20 @@ async function openTx(txid) {
 async function openCluster(id) {
   try {
     const d = await api.cluster({ id });
+    destroyClusterGraph();
     document.getElementById("dialog-label").textContent = "ENTITY HYPOTHESIS";
-    dialogBody.innerHTML = `<div class="dialog-content"><div class="eyebrow">COMMON-INPUT CLUSTER</div><h2>${esc(d.cluster.id)}</h2><p class="form-note">A heuristic ownership hypothesis; it can be wrong.</p><div class="detail-metrics"><div class="detail-metric"><small>Members</small><strong>${num(d.cluster.size)}</strong></div><div class="detail-metric"><small>Transactions</small><strong>${num(d.cluster.tx_count)}</strong></div></div><h3 class="section-title">Address identifiers</h3><div class="code-block">${d.members.map((x) => esc(x.address)).join("\n")}${d.cluster.size > d.members.length ? "\n… limited to 250" : ""}</div><h3 class="section-title">Related transactions</h3>${d.transactions.map((x) => `<div class="kv"><button class="tx-link" data-tx="${esc(x.txid)}">${esc(x.txid)}</button><strong>${btc(x.output_sat)}</strong></div>`).join("")}</div>`;
+    const shownLinks = d.graph?.links.length || 0,
+      totalLinks = d.graph?.linkTotal || 0,
+      graphAddresses = new Set(
+        (d.graph?.links || []).map((link) => link.address),
+      ),
+      graphTransactions = new Set(
+        (d.graph?.links || []).map((link) => link.txid),
+      ),
+      graphNodes = graphAddresses.size + graphTransactions.size;
+    dialogBody.innerHTML = `<div class="dialog-content"><div class="eyebrow">COMMON-INPUT CLUSTER</div><h2>${esc(d.cluster.id)}</h2><p class="form-note">A heuristic ownership hypothesis; it can be wrong. Graph links show observed address participation in related transactions, not verified ownership.</p><div class="detail-metrics"><div class="detail-metric"><small>Members</small><strong>${num(d.cluster.size)}</strong></div><div class="detail-metric"><small>Transactions</small><strong>${num(d.cluster.tx_count)}</strong></div><div class="detail-metric"><small>Graph nodes</small><strong>${num(graphNodes)}</strong></div><div class="detail-metric"><small>Graph links</small><strong>${num(shownLinks)}${totalLinks > shownLinks ? ` / ${num(totalLinks)}` : ""}</strong></div></div><section class="cluster-graph-shell"><div class="cluster-graph-toolbar"><div class="cluster-graph-legend"><span><i class="cluster-key transaction"></i>Transaction</span><span><i class="cluster-key address"></i>Address</span><span><i class="cluster-key link"></i>Observed link</span></div><div class="cluster-graph-actions"><button class="button button-small" data-graph-action="rings" aria-pressed="false">Rings</button><button class="button button-small" data-graph-action="flow" aria-pressed="false">Flow</button><button class="button button-small button-primary" data-graph-action="fit">Fit graph</button></div></div>${shownLinks ? `<div id="cluster-graph" class="cluster-graph" role="img" aria-label="Interactive graph of ${num(graphAddresses.size)} address members and ${num(graphTransactions.size)} related transactions"></div>` : '<div class="cluster-graph-empty">No address-to-transaction links are available for this hypothesis.</div>'}<div class="cluster-graph-caption"><span id="cluster-graph-selection">Select a node for evidence context. Double-click a transaction to inspect it.</span><span>${totalLinks > shownLinks ? `Showing ${num(shownLinks)} of ${num(totalLinks)} links for responsive rendering. ` : ""}The complete evidence lists remain below.</span></div></section><h3 class="section-title">Address identifiers</h3><div class="code-block">${d.members.map((x) => esc(x.address)).join("\n")}${d.cluster.size > d.members.length ? "\n… limited to 250" : ""}</div><h3 class="section-title">Related transactions</h3>${d.transactions.map((x) => `<div class="kv"><button class="tx-link" data-tx="${esc(x.txid)}">${esc(x.txid)}</button><strong>${btc(x.output_sat)}</strong></div>`).join("")}</div>`;
     if (!dialog.open) dialog.showModal();
+    renderClusterGraph(d);
   } catch (e) {
     fail(e);
   }
@@ -571,6 +761,7 @@ async function openCluster(id) {
 async function openErrors(id, name) {
   try {
     const rows = await api.errors({ id });
+    destroyClusterGraph();
     document.getElementById("dialog-label").textContent = "IMPORT REJECTIONS";
     dialogBody.innerHTML = `<div class="dialog-content"><h2>${esc(name)}</h2><p class="form-note">First ${rows.length} rejected rows.</p><div class="table-scroll mt"><table class="data-table"><thead><tr><th>ROW</th><th>VALIDATION REASON</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${x.row_number}</td><td>${esc(x.reason)}</td></tr>`).join("")}</tbody></table></div></div>`;
     dialog.showModal();
@@ -742,8 +933,13 @@ navigation.addEventListener("click", (e) => {
 document
   .getElementById("close-dialog")
   .addEventListener("click", () => dialog.close());
+dialog.addEventListener("close", destroyClusterGraph);
 dialog.addEventListener("click", (e) => {
   if (e.target === dialog) dialog.close();
+  const graphAction = e.target.closest("[data-graph-action]")?.dataset
+    .graphAction;
+  if (graphAction === "fit") state.clusterGraph?.fit(undefined, 35);
+  else if (graphAction) clusterLayout(graphAction);
   const tx = e.target.closest("[data-tx]")?.dataset.tx;
   if (tx) openTx(tx);
 });
