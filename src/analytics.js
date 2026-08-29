@@ -45,7 +45,7 @@ function reasonsFor(row, anomaly, baseline) {
   return reasons;
 }
 
-function analyze(db, onProgress = () => {}, cancelled = () => false) {
+function analyze(db, onProgress = () => {}, cancelled = () => false, context = {}) {
   const check = () => { if (cancelled()) throw new Error('Analysis cancelled; previous results preserved.'); };
   const total = db.prepare('SELECT count(*) AS n FROM transactions').get().n;
   if (!total) throw new Error('Import evidence before running analysis.');
@@ -122,7 +122,7 @@ function analyze(db, onProgress = () => {}, cancelled = () => false) {
     for (const addr of parents.keys()) { check(); insertMember.run(addr,ids.get(find(addr))); }
     db.exec(`UPDATE clusters SET tx_count=(SELECT count(DISTINCT a.txid) FROM addresses a JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=clusters.id)`);
     check();
-    audit(db, 'analysis.completed', { id, transactions: total, model: model ? 'Isolation Forest' : 'Rules only: fewer than 32 transactions', ruleVersion: RULE_VERSION });
+    audit(db, 'analysis.completed', { id, transactions: total, model: model ? 'Isolation Forest' : 'Rules only: fewer than 32 transactions', ruleVersion: RULE_VERSION }, context);
     db.exec('COMMIT');
     onProgress({ phase: 'Analysis complete', percent: 100 });
     return { id, created, transactions: total, modelAvailable: !!model };

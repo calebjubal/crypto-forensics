@@ -11,7 +11,7 @@ function csvCell(value) {
   return '"'+text.replaceAll('"','""')+'"';
 }
 
-async function exportReport(db, file, format = 'json', cancelled = () => false) {
+async function exportReport(db, file, format = 'json', cancelled = () => false, context = {}) {
   if (!['csv','json'].includes(format)) throw new Error('Unsupported report format.');
   const stream = fs.createWriteStream(file, { flags: 'wx' });
   let failure;
@@ -40,7 +40,7 @@ async function exportReport(db, file, format = 'json', cancelled = () => false) 
     }
     if (format === 'json') await write('],"audit":'+JSON.stringify(db.prepare('SELECT * FROM audit ORDER BY id').all())+'}');
     stream.end(); await once(stream,'finish');
-    audit(db,'report.exported',{ format, leads: count });
+    audit(db,'report.exported',{ format, leads: count },context);
     return { file, count };
   } catch(error) { stream.destroy(); throw error; }
 }

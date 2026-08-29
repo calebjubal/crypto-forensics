@@ -1,11 +1,15 @@
 'use strict';
 
 const { DatabaseSync } = require('node:sqlite');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const { normalize } = require('./validation');
 const { records } = require('./parsers');
+
+const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,64}$/;
+const PASSWORD_MINIMUM = 12;
+const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 function openDatabase(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -46,15 +50,75 @@ function openDatabase(file) {
     CREATE TABLE IF NOT EXISTS clusters(id TEXT PRIMARY KEY, size INTEGER NOT NULL, tx_count INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS cluster_members(address TEXT PRIMARY KEY, cluster_id TEXT NOT NULL REFERENCES clusters(id));
     CREATE INDEX IF NOT EXISTS members_cluster ON cluster_members(cluster_id);
-    CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS audit_timestamp ON audit(timestamp DESC);
+    CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY COLLATE NOCASE, salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL, created TEXT NOT NULL, last_login TEXT);`);
   return db;
 }
 
-function audit(db, action, details) {
-  db.prepare('INSERT INTO audit(timestamp,action,details) VALUES(?,?,?)').run(new Date().toISOString(), action, JSON.stringify(details));
+function audit(db, action, details = {}, context = {}) {
+  const entry = { ...details };
+  if (context.username) entry.actor = context.username;
+  if (context.sessionId) entry.sessionId = context.sessionId;
+  db.prepare('INSERT INTO audit(timestamp,action,details) VALUES(?,?,?)').run(new Date().toISOString(), action, JSON.stringify(entry));
 }
 
-async function importFile(db, file, onProgress = () => {}, cancelled = () => false) {
+function validateCredentials(input, creating = false) {
+  const username = String(input?.username || '').trim();
+  const password = String(input?.password || '');
+  if (!USERNAME_PATTERN.test(username)) throw new Error('Username must be 3–64 characters using letters, numbers, dot, underscore, or hyphen.');
+  if (creating && (password.length < PASSWORD_MINIMUM || password.length > 256)) throw new Error('Password must contain 12–256 characters.');
+  if (!creating && !password) throw new Error('Enter your password.');
+  return { username, password };
+}
+
+function authenticationStatus(db) {
+  return { configured: db.prepare('SELECT count(*) AS count FROM users').get().count > 0 };
+}
+
+function createInitialUser(db, input) {
+  if (authenticationStatus(db).configured) throw new Error('A local account is already configured.');
+  const { username, password } = validateCredentials(input, true);
+  const salt = randomBytes(16);
+  const passwordHash = scryptSync(password, salt, 32, SCRYPT_OPTIONS);
+  const created = new Date().toISOString();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('INSERT INTO users(username,salt,password_hash,created,last_login) VALUES(?,?,?,?,?)')
+      .run(username, salt.toString('hex'), passwordHash.toString('hex'), created, created);
+    audit(db, 'auth.account_created', { username }, { username });
+    audit(db, 'auth.login_succeeded', { username, initialSetup: true }, { username });
+    db.exec('COMMIT');
+    return { username };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function authenticate(db, input) {
+  const { username, password } = validateCredentials(input);
+  const user = db.prepare('SELECT * FROM users WHERE username=?').get(username);
+  let expected = Buffer.alloc(32);
+  let salt = Buffer.alloc(16);
+  if (user) {
+    expected = Buffer.from(user.password_hash, 'hex');
+    salt = Buffer.from(user.salt, 'hex');
+  }
+  const actual = scryptSync(password, salt, 32, SCRYPT_OPTIONS);
+  const valid = !!user && expected.length === actual.length && timingSafeEqual(expected, actual);
+  if (!valid) {
+    audit(db, 'auth.login_failed', { username }, { username });
+    throw new Error('Invalid username or password.');
+  }
+  const loginTime = new Date().toISOString();
+  db.prepare('UPDATE users SET last_login=? WHERE username=?').run(loginTime, user.username);
+  audit(db, 'auth.login_succeeded', { username: user.username }, { username:user.username });
+  return { username: user.username };
+}
+
+async function importFile(db, file, onProgress = () => {}, cancelled = () => false, context = {}) {
   const stats = { id: randomUUID(), name: path.basename(file), format: path.extname(file).slice(1).toUpperCase(), rows: 0, accepted: 0, duplicates: 0, rejected: 0, new_transactions: 0, bytes: 0, created: new Date().toISOString() };
   const size = fs.statSync(file).size;
   if (!fs.statSync(file).isFile()) throw new Error('Select a regular file.');
@@ -96,14 +160,48 @@ async function importFile(db, file, onProgress = () => {}, cancelled = () => fal
     if (cancelled()) throw new Error('Import cancelled; this file was rolled back.');
     db.prepare('UPDATE imports SET sha256=?,bytes=?,rows=?,accepted=?,duplicates=?,rejected=?,new_transactions=? WHERE id=?').run(stats.sha256, stats.bytes, stats.rows, stats.accepted, stats.duplicates, stats.rejected, stats.new_transactions, stats.id);
     if (stats.accepted) db.exec("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='revision'");
-    audit(db, 'import.completed', stats);
+    audit(db, 'import.completed', stats, context);
     db.exec('COMMIT');
     onProgress({ phase: 'Imported', name: stats.name, rows: stats.rows, percent: 100 });
     return stats;
   } catch (error) {
     db.exec('ROLLBACK');
-    audit(db, 'import.rolled_back', { name: stats.name, reason: error.message });
+    audit(db, 'import.rolled_back', { name: stats.name, reason: error.message }, context);
     throw error;
+  }
+}
+
+function deleteImport(db, id, context = {}) {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid evidence source.');
+  const source = db.prepare('SELECT * FROM imports WHERE id=?').get(id);
+  if (!source) throw new Error('Evidence source not found.');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec('DROP TABLE IF EXISTS temp.removed_observations; DROP TABLE IF EXISTS temp.orphan_transactions;');
+    db.prepare('CREATE TEMP TABLE removed_observations AS SELECT observation_id AS id FROM provenance WHERE import_id=?').run(id);
+    const linked = db.prepare('SELECT count(*) AS count FROM removed_observations').get().count;
+    db.prepare('DELETE FROM provenance WHERE import_id=?').run(id);
+    const removedObservations = db.prepare('DELETE FROM observations WHERE id IN (SELECT id FROM removed_observations) AND NOT EXISTS (SELECT 1 FROM provenance WHERE provenance.observation_id=observations.id)').run().changes;
+    db.exec('CREATE TEMP TABLE orphan_transactions AS SELECT txid FROM transactions WHERE NOT EXISTS (SELECT 1 FROM observations WHERE observations.txid=transactions.txid);');
+    const removedTransactions = db.prepare('SELECT count(*) AS count FROM orphan_transactions').get().count;
+    db.exec(`DELETE FROM lead_scores;
+      DELETE FROM cluster_members;
+      DELETE FROM clusters;
+      DELETE FROM lead_reviews WHERE txid IN (SELECT txid FROM orphan_transactions);
+      DELETE FROM addresses WHERE txid IN (SELECT txid FROM orphan_transactions);
+      DELETE FROM transactions WHERE txid IN (SELECT txid FROM orphan_transactions);`);
+    db.prepare('DELETE FROM import_errors WHERE import_id=?').run(id);
+    db.prepare('DELETE FROM imports WHERE id=?').run(id);
+    db.exec("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='revision'");
+    const result = { id, name: source.name, linkedRows: linked, removedObservations, removedTransactions };
+    audit(db, 'import.deleted', result, context);
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('DROP TABLE IF EXISTS temp.removed_observations; DROP TABLE IF EXISTS temp.orphan_transactions;');
   }
 }
 
@@ -156,6 +254,10 @@ function page(db, type, options = {}) {
     return { rows: db.prepare(`SELECT * FROM clusters c WHERE size>1${filter} ORDER BY size DESC,id LIMIT ? OFFSET ?`).all(...params, limit, offset),
       total: db.prepare(`SELECT count(*) AS n FROM clusters c WHERE size>1${filter}`).get(...params).n, limit, offset };
   }
+  if (type === 'audit') {
+    const total = db.prepare('SELECT count(*) AS count FROM audit').get().count;
+    return { rows: db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT ? OFFSET ?').all(limit, offset), total, limit, offset };
+  }
   throw new Error('Unknown page.');
 }
 
@@ -177,16 +279,17 @@ function clusterDetail(db, id) {
     transactions: db.prepare(`SELECT DISTINCT t.txid,t.output_sat,t.coinjoin FROM transactions t JOIN addresses a ON a.txid=t.txid JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=? LIMIT 100`).all(id) };
 }
 
-function review(db, input) {
+function review(db, input, context = {}) {
   if (!['New', 'In review', 'Escalated', 'Dismissed'].includes(input.status)) throw new Error('Invalid review status.');
   if (typeof input.notes !== 'string' || input.notes.length > 10000) throw new Error('Notes must contain at most 10,000 characters.');
   if (!db.prepare('SELECT 1 FROM transactions WHERE txid=?').get(input.txid)) throw new Error('Transaction not found.');
   db.exec('BEGIN');
   try {
     db.prepare('INSERT INTO lead_reviews VALUES(?,?,?,?) ON CONFLICT(txid) DO UPDATE SET status=excluded.status,notes=excluded.notes,updated=excluded.updated').run(input.txid,input.status,input.notes,new Date().toISOString());
-    audit(db, 'lead.reviewed', { txid: input.txid, status: input.status, notes: input.notes });
+    audit(db, 'lead.reviewed', { txid: input.txid, status: input.status }, context);
     db.exec('COMMIT'); return { saved: true };
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
-module.exports = { openDatabase, importFile, summary, page, detail, clusterDetail, review, audit };
+module.exports = { openDatabase, importFile, deleteImport, summary, page, detail, clusterDetail, review, audit,
+  authenticationStatus, createInitialUser, authenticate };
