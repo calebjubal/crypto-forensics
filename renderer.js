@@ -170,6 +170,15 @@ function fail(e) {
   console.error(e);
   toast(e?.message || String(e), true);
 }
+window.addEventListener("unhandledrejection", (event) => {
+  event.preventDefault();
+  fail(event.reason || new Error("The operation could not be completed."));
+});
+window.addEventListener("error", (event) => {
+  fail(
+    event.error || new Error(event.message || "Unexpected application error."),
+  );
+});
 function heading(e, t, d, a = "") {
   return `<div class="page-heading"><div><div class="eyebrow">${esc(e)}</div><h1>${esc(t)}</h1><p>${esc(d)}</p></div><div class="heading-actions">${a}</div></div>`;
 }
@@ -446,6 +455,13 @@ async function system() {
     `<div class="notice info"><span>Bundled files use Electron IPC and a worker MessagePort. Network APIs, remote content, permissions, downloads, and TCP/UDP listeners are disabled.</span></div><section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Runtime</h2></div><span class="badge low">LOCAL</span></div><div class="panel-body"><div class="kv"><span>Network</span><strong>${esc(e.network)}</strong></div><div class="kv"><span>Application listeners</span><strong>${e.ports}</strong></div><div class="kv"><span>Internal transport</span><strong>${esc(e.transport)}</strong></div><div class="kv"><span>Remote content</span><strong>Denied</strong></div><div class="kv"><span>Permissions / downloads</span><strong>Denied</strong></div></div></article><article class="panel"><div class="panel-head"><div><h2>Storage</h2></div></div><div class="panel-body"><p class="full-path">${esc(e.database)}</p><div class="kv"><span>Database</span><strong>Embedded SQLite</strong></div><div class="kv"><span>Journal</span><strong>WAL · synchronous FULL</strong></div><div class="kv"><span>Amounts</span><strong>Integer satoshis</strong></div><div class="kv"><span>Source integrity</span><strong>SHA-256</strong></div></div></article></section><section class="panel"><div class="panel-head"><div><h2>Bundled runtime</h2></div></div><div class="panel-body"><div class="kv"><span>Satoshi Trace</span><strong>${esc(e.application)}</strong></div><div class="kv"><span>Electron / Node</span><strong>${esc(e.electron)} / ${esc(e.node)}</strong></div><div class="kv"><span>ML</span><strong>Bundled JavaScript</strong></div><div class="kv"><span>Geo lookup</span><strong>None · supplied fields only</strong></div></div></section>`;
 }
 async function navigate(route, push = true) {
+  const previous = {
+    route: state.route,
+    search: state.search,
+    offset: state.offset,
+    breadcrumb: breadcrumb.textContent,
+    markup: main.innerHTML,
+  };
   if (!routes.some((x) => x[0] === route)) route = "overview";
   state.route = route;
   state.search = "";
@@ -453,8 +469,7 @@ async function navigate(route, push = true) {
   if (push) history.replaceState(null, "", `#${route}`);
   breadcrumb.textContent = routes.find((x) => x[0] === route)[1];
   renderNav();
-  main.innerHTML =
-    '<div class="loading"><img class="loading-logo-inline" src="./assets/icon.png" alt="">Reading local evidence…</div>';
+  main.setAttribute("aria-busy", "true");
   try {
     await refreshSummary();
     await {
@@ -470,8 +485,16 @@ async function navigate(route, push = true) {
     await api.auditEvent({ action: "view.opened", details: { view: route } });
     main.focus({ preventScroll: true });
   } catch (e) {
+    state.route = previous.route;
+    state.search = previous.search;
+    state.offset = previous.offset;
+    breadcrumb.textContent = previous.breadcrumb;
+    main.innerHTML = previous.markup;
+    history.replaceState(null, "", `#${previous.route}`);
+    renderNav();
     fail(e);
-    main.innerHTML = `<div class="empty"><h3>Unable to open view</h3><p>${esc(e.message)}</p></div>`;
+  } finally {
+    main.removeAttribute("aria-busy");
   }
 }
 function txGraph(d) {
