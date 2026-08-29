@@ -445,7 +445,8 @@ function page(db, type, options = {}) {
     const total = db
       .prepare(`SELECT count(*) AS count ${select}${filters}`)
       .get(...params).count;
-    order = type === "leads" ? "l.score DESC,t.txid" : "t.rowid DESC";
+    order =
+      type === "leads" ? "l.score DESC,l.anomaly DESC,t.txid" : "t.rowid DESC";
     const rows = db
       .prepare(
         `SELECT t.txid,t.output_sat,t.fee_sat,t.coinjoin,l.score,l.priority,l.category,l.anomaly,l.reasons,

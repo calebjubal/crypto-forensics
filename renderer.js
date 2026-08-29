@@ -273,18 +273,18 @@ async function overview() {
       actions,
     ) +
     staleNotice() +
-    `<section class="metrics">${metric("Transactions", num(s.transactions), `${num(s.observations)} network observations`, "transaction")}${metric("Addresses", num(s.addresses), "Observed inputs and outputs", "database")}${metric("Entity clusters", num(s.clusters), "Multi-address hypotheses", "cluster")}${metric("Priority leads", num(s.leads), `${num(s.urgent)} high or critical`, "flag")}</section><section class="panel overview-chart"><div class="panel-head"><div><h2>Observation activity</h2><p>Daily UTC network observations</p></div><span class="tag">${s.timeline.length} DAYS</span></div><div class="chart-summary"><span class="chart-number">${num(s.observations)}</span><span>observations</span></div>${trend(s.timeline)}</section><section class="panel mt"><div class="panel-head"><div><h2>Priority leads</h2><p>Explainable rule and anomaly scores</p></div><button class="link-button" data-route="leads">View all →</button></div><div class="results">${leadTable(leads)}</div></section><section class="bottom-grid"><article class="panel"><div class="panel-head"><div><h2>Evidence sources</h2><p>SHA-256 provenance</p></div><button class="link-button" data-route="evidence">View imports →</button></div><div class="panel-body">${sources(s.imports)}</div></article><article class="panel"><div class="panel-head"><div><h2>Country metadata</h2><p>Values supplied in the dataset</p></div></div><div class="panel-body">${countries(s.countries, s.observations)}</div></article></section>`;
+    `<section class="metrics">${metric("Transactions", num(s.transactions), `${num(s.observations)} network observations`, "transaction")}${metric("Addresses", num(s.addresses), "Observed inputs and outputs", "database")}${metric("Entity clusters", num(s.clusters), "Multi-address hypotheses", "cluster")}${metric("Priority leads", num(s.leads), `${num(s.urgent)} high or critical`, "flag")}</section><section class="panel overview-chart"><div class="panel-head"><div><h2>Observation activity</h2><p>Daily UTC network observations</p></div><span class="tag">${s.timeline.length} DAYS</span></div><div class="chart-summary"><span class="chart-number">${num(s.observations)}</span><span>observations</span></div>${trend(s.timeline)}</section><section class="panel mt"><div class="panel-head"><div><h2>Priority leads</h2><p>Integer rule score · raw anomaly breaks ties</p></div><button class="link-button" data-route="leads">View all →</button></div><div class="results">${leadTable(leads)}</div></section><section class="bottom-grid"><article class="panel"><div class="panel-head"><div><h2>Evidence sources</h2><p>SHA-256 provenance</p></div><button class="link-button" data-route="evidence">View imports →</button></div><div class="panel-body">${sources(s.imports)}</div></article><article class="panel"><div class="panel-head"><div><h2>Country metadata</h2><p>Values supplied in the dataset</p></div></div><div class="panel-body">${countries(s.countries, s.observations)}</div></article></section>`;
 }
-function pager(d) {
-  return `<div class="pagination"><button class="button button-small" data-page="${Math.max(0, d.offset - d.limit)}" ${d.offset ? "" : "disabled"}>Previous</button><span>${Math.floor(d.offset / d.limit) + 1} / ${Math.max(1, Math.ceil(d.total / d.limit))}</span><button class="button button-small" data-page="${d.offset + d.limit}" ${d.offset + d.limit < d.total ? "" : "disabled"}>Next</button></div>`;
+function pager(d, type) {
+  return `<div class="pagination"><button class="button button-small" data-page="${Math.max(0, d.offset - d.limit)}" data-page-type="${type}" data-page-limit="${d.limit}" ${d.offset ? "" : "disabled"}>Previous</button><span>${Math.floor(d.offset / d.limit) + 1} / ${Math.max(1, Math.ceil(d.total / d.limit))}</span><button class="button button-small" data-page="${d.offset + d.limit}" data-page-type="${type}" data-page-limit="${d.limit}" ${d.offset + d.limit < d.total ? "" : "disabled"}>Next</button></div>`;
 }
 function leadTable(d) {
   if (!d.rows.length) return empty("priority leads");
-  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>PRIORITY</th><th>TRANSACTION / FIRST OBSERVED</th><th>CATEGORY</th><th>FIRST SOURCE IP</th><th>SCORE</th><th>STATUS</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${badge(r.priority)}</td><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 24))}</button><small>${date(r.timestamp)}</small></td><td>${esc(r.category)}<small>${r.coinjoin ? "Collaborative caution" : ""}</small></td><td class="mono">${esc(r.src_ip)}</td><td class="score">${r.score}<span>/100</span></td><td class="status-label">${esc(r.status)}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Inspect →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} leads</span>${pager(d)}</div>`;
+  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>PRIORITY</th><th>TRANSACTION / FIRST OBSERVED</th><th>CATEGORY</th><th>FIRST SOURCE IP</th><th>SCORE</th><th>STATUS</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${badge(r.priority)}</td><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 24))}</button><small>${date(r.timestamp)}</small></td><td>${esc(r.category)}<small>${r.coinjoin ? "Collaborative caution" : ""}</small></td><td class="mono">${esc(r.src_ip)}</td><td class="score">${r.score}<span>/100</span><small class="score-detail" title="Raw Isolation Forest anomaly score; relative unusualness, not risk probability">Anomaly ${r.anomaly === null ? "—" : Number(r.anomaly).toFixed(3)}</small></td><td class="status-label">${esc(r.status)}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Inspect →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} leads</span>${pager(d, "leads")}</div>`;
 }
 function txTable(d) {
   if (!d.rows.length) return empty("transactions");
-  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>TXID / FIRST OBSERVED</th><th>OUTPUT VALUE</th><th>FEE</th><th>NETWORK OBS.</th><th>LEAD PRIORITY</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 30))}</button><small>${date(r.timestamp)}</small></td><td>${btc(r.output_sat)}</td><td>${btc(r.fee_sat)}</td><td>${num(r.observations)}</td><td>${r.priority ? badge(r.priority) : '<span class="muted">Not analyzed</span>'}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Open →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} transactions</span>${pager(d)}</div>`;
+  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>TXID / FIRST OBSERVED</th><th>OUTPUT VALUE</th><th>FEE</th><th>NETWORK OBS.</th><th>LEAD PRIORITY</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 30))}</button><small>${date(r.timestamp)}</small></td><td>${btc(r.output_sat)}</td><td>${btc(r.fee_sat)}</td><td>${num(r.observations)}</td><td>${r.priority ? badge(r.priority) : '<span class="muted">Not analyzed</span>'}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Open →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} transactions</span>${pager(d, "transactions")}</div>`;
 }
 function toolbar(kind) {
   return `<div class="toolbar"><label class="search"><span class="screen-reader">Search</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, address, or IP…"></label>${kind === "leads" ? `<select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((x) => `<option ${state.priority === x ? "selected" : ""}>${x}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((x) => `<option ${state.status === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : ""}<span class="count">Local indexed search</span></div>`;
@@ -296,7 +296,7 @@ async function listing(type) {
       leads ? "TRIAGED RESULTS" : "BLOCKCHAIN EVIDENCE",
       leads ? "Priority leads" : "Transactions",
       leads
-        ? "Review prioritized, explainable hypotheses. Scores are triage aids—not conclusions."
+        ? "Review prioritized hypotheses. Integer rule scores drive priority; raw anomaly values break ties."
         : "Browse normalized transactions and correlated network observations.",
       leads
         ? '<button class="button" data-action="export-json">Export JSON</button><button class="button" data-action="export-csv">Export CSV</button><button class="button button-primary" data-action="analyze">Re-run analysis</button>'
@@ -306,7 +306,7 @@ async function listing(type) {
     `<section class="panel">${toolbar(type)}<div class="results"><div class="loading">Querying local index…</div></div></section>`;
   await refreshList(type);
 }
-async function refreshList(type) {
+async function refreshList(type, limit = state.limit) {
   try {
     const d = await api.page({
       type,
@@ -315,7 +315,7 @@ async function refreshList(type) {
         priority: state.priority,
         status: state.status,
         offset: state.offset,
-        limit: state.limit,
+        limit,
       },
     });
     document.querySelector(".results").innerHTML =
@@ -365,7 +365,7 @@ function activityRows(d) {
     })
     .join(
       "",
-    )}</tbody></table></div><div class="table-footer"><span>${num(d.total)} recorded operations</span>${pager(d)}</div>`;
+    )}</tbody></table></div><div class="table-footer"><span>${num(d.total)} recorded operations</span>${pager(d, "audit")}</div>`;
 }
 async function activity() {
   main.innerHTML =
@@ -400,7 +400,7 @@ async function refreshClusters() {
       options: { search: state.search, offset: state.offset, limit: 12 },
     });
     document.querySelector(".results").innerHTML = d.rows.length
-      ? `<div class="cluster-grid">${d.rows.map((x) => `<article class="cluster-card"><div class="cluster-mini">●—●</div><h3>${esc(x.id)}</h3><div class="cluster-values"><div><strong>${num(x.size)}</strong><small>addresses</small></div><div><strong>${num(x.tx_count)}</strong><small>transactions</small></div></div><button class="button" data-cluster="${esc(x.id)}">Inspect hypothesis</button></article>`).join("")}</div><div class="table-footer"><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)}</span>${pager(d)}</div>`
+      ? `<div class="cluster-grid">${d.rows.map((x) => `<article class="cluster-card"><div class="cluster-mini">●—●</div><h3>${esc(x.id)}</h3><div class="cluster-values"><div><strong>${num(x.size)}</strong><small>addresses</small></div><div><strong>${num(x.tx_count)}</strong><small>transactions</small></div></div><button class="button" data-cluster="${esc(x.id)}">Inspect hypothesis</button></article>`).join("")}</div><div class="table-footer"><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)}</span>${pager(d, "clusters")}</div>`
       : empty("entity clusters");
   } catch (e) {
     fail(e);
@@ -680,12 +680,14 @@ main.addEventListener("click", (e) => {
   else if (errors) openErrors(errors.dataset.errors, errors.dataset.name);
   else if (remove) removeImport(remove.dataset.deleteImport);
   else if (p) {
+    const pageType = p.dataset.pageType,
+      pageLimit = Number(p.dataset.pageLimit) || state.limit;
     state.offset = Number(p.dataset.page);
-    state.route === "clusters"
+    pageType === "clusters"
       ? refreshClusters()
-      : state.route === "activity"
+      : pageType === "audit"
         ? activity()
-        : refreshList(state.route);
+        : refreshList(pageType, pageLimit);
   }
 });
 main.addEventListener("input", (e) => {

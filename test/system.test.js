@@ -184,6 +184,15 @@ test("correlates, trains, clusters and emits explainable leads", async () => {
   const leads = page(db, "leads", { limit: 10 });
   assert.ok(leads.total > 0);
   assert.ok(leads.rows[0].score >= 25);
+  const overviewNext = page(db, "leads", { limit: 5, offset: 5 });
+  assert.equal(overviewNext.limit, 5);
+  assert.equal(overviewNext.offset, 5);
+  for (let index = 1; index < leads.rows.length; index++) {
+    const previous = leads.rows[index - 1],
+      current = leads.rows[index];
+    if (previous.score === current.score)
+      assert.ok(previous.anomaly >= current.anomaly);
+  }
   const d = detail(db, leads.rows[0].txid);
   assert.ok(JSON.parse(d.transaction.reasons).some((r) => r.points > 0));
   assert.ok(d.sources.length > 0);

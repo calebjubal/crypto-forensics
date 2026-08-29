@@ -751,6 +751,14 @@ main {
   font-weight: 400;
   color: #a5adba;
 }
+.score .score-detail {
+  display: block;
+  margin-top: 3px;
+  color: #8292a6;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
 .table-footer {
   padding: 13px 20px;
   border-top: 1px solid #eff1f5;
