@@ -6,6 +6,8 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-08-29
+
 ### Added
 
 - Live host-connectivity badge that displays red when the operating system reports offline and green when it reports online, without making a network request or changing the application's network isolation.
@@ -76,7 +78,8 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Explainable priority leads, investigator reviews, and JSON/CSV exports.
 - Runtime network denial, restrictive Electron policies, and hardened fuses.
 
-[Unreleased]: https://github.com/calebjubal/crypto-forensics/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/calebjubal/crypto-forensics/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/calebjubal/crypto-forensics/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/calebjubal/crypto-forensics/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/calebjubal/crypto-forensics/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/calebjubal/crypto-forensics/releases/tag/v1.0.0

@@ -11,7 +11,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/calebjubal/crypto-forensics/releases/tag/v1.0.2"><img alt="Version 1.0.2" src="https://img.shields.io/badge/version-v1.0.2-E88435?style=for-the-badge"></a>
+    <a href="https://github.com/calebjubal/crypto-forensics/releases/tag/v1.0.3"><img alt="Version 1.0.3" src="https://img.shields.io/badge/version-v1.0.3-E88435?style=for-the-badge"></a>
     <a href="https://github.com/calebjubal/crypto-forensics/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/calebjubal/crypto-forensics?style=for-the-badge&color=17243A"></a>
     <img alt="Offline first" src="https://img.shields.io/badge/runtime-100%25_offline-248675?style=for-the-badge">
     <img alt="Tests passing" src="https://img.shields.io/badge/tests-11_passing-248675?style=for-the-badge">
@@ -72,7 +72,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 4. Install and launch Satoshi Trace.
 5. Create the first local investigator account. There is no password-recovery service, so retain the credentials securely.
 
-The published `v1.0.2` release contains the Windows installer and Squirrel package metadata. Linux packages are created separately on a compatible Linux build host.
+The `v1.0.3` release contains the Windows installer and Squirrel package metadata. Linux packages are created separately on a compatible Linux build host.
 
 ### Run from source
 
