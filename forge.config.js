@@ -12,7 +12,7 @@ module.exports = {
           name: "crypto-forensics",
         },
         prerelease: false,
-        draft: true,
+        draft: false,
       },
     },
   ],
