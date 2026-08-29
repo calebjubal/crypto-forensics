@@ -42,6 +42,7 @@
     "electron": "^44.0.0"
   },
   "dependencies": {
+    "animejs": "^4.1.3",
     "csv-parse": "6.1.0",
     "electron-squirrel-startup": "^1.0.1",
     "saxes": "6.0.0",
