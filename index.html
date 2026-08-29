@@ -10,17 +10,12 @@
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="#overview" aria-label="Satoshi Trace overview"><span class="brand-mark">₿</span><span>SATOSHI<span class="brand-sub">T R A C E</span></span></a>
-    <div class="workspace"><span class="workspace-icon">CF</span><div>Local investigation<small>Bitcoin intelligence workspace</small></div><span class="tiny-dot"></span></div>
+    <a class="brand" href="#overview" aria-label="Satoshi Trace overview"><img class="brand-mark" src="./assets/icon.png" alt=""><span>SATOSHI<span class="brand-sub">T R A C E</span></span></a>
     <div class="nav-label">INVESTIGATE</div>
     <nav id="navigation" aria-label="Main navigation"></nav>
-    <div class="sidebar-bottom">
-      <div class="airgap"><span class="airgap-icon">◈</span><strong>Offline by design</strong><p>Your evidence stays here.<br>No cloud. No listening ports.</p><span class="airgap-status"><i></i> LOCAL PROCESSING</span></div>
-      <div class="profile"><span class="avatar">IA</span><div>Investigator<small>Local workspace</small></div><span class="version">v1.0</span></div>
-    </div>
   </aside>
   <div class="shell">
-    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Overview</strong></div><div class="top-actions"><span class="offline-pill"><i></i> Offline mode</span><span class="top-divider"></span><button class="button button-small" id="export-top">Export report <span aria-hidden="true">↗</span></button></div></header>
+    <header class="topbar"><div class="breadcrumb"><strong id="breadcrumb">Overview</strong></div><div class="top-actions"><span class="offline-pill"><i></i> Offline</span></div></header>
     <main id="main" tabindex="-1"><div class="loading">Opening local evidence store…</div></main>
     <footer><span><i class="status-dot"></i> Local SQLite · No network transport</span><span>Investigative hypotheses. Human review required.</span></footer>
   </div>
