@@ -18,6 +18,14 @@ Each integrated record requires `timestamp`, `src_ip`, `dst_ip`, `src_port`, `ds
 - Amounts are BTC decimals with at most 8 places and are stored as integer satoshis.
 - CSV list fields are JSON arrays in cells; JSON uses a top-level record array; XML uses `<records><record>` and `<item>` array values.
 
+## Local access and evidence management
+
+- First launch requires creation of a local investigator account. Passwords are stored only as salted scrypt hashes; there is no offline password-recovery mechanism.
+- The file chooser accepts multiple CSV, JSON, and XML files, and additional files can be added later from the Evidence imports screen.
+- Each source is recorded with its ingestion time, SHA-256 hash, size, and accepted, duplicate, and rejected row counts.
+- Removing a source leaves observations supported by another source intact, removes orphaned evidence, and clears derived leads and clusters until analysis is rerun. It never deletes the original source file.
+- The Activity log records application lifecycle, authentication, navigation, ingestion, removal, analysis, review, export, and cancellation events in the case database.
+
 ## Development and packaging
 
 ```powershell
