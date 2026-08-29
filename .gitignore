@@ -77,6 +77,10 @@ web_modules/
 # Next.js build output
 .next
 out
+test-output/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Nuxt.js build / generate output
 .nuxt

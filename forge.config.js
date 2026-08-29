@@ -17,6 +17,9 @@ module.exports = {
   ],
   packagerConfig: {
     asar: true,
+    name: 'Satoshi Trace',
+    executableName: 'satoshi-trace',
+    ignore: [/^\/\.git($|\/)/, /^\/\.env/, /^\/out($|\/)/, /^\/test($|\/)/, /^\/test-output($|\/)/, /^\/README\.md$/],
   },
   rebuildConfig: {},
   makers: [
