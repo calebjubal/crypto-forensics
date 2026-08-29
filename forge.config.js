@@ -1,3 +1,4 @@
+const path = require('node:path');
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
@@ -19,13 +20,16 @@ module.exports = {
     asar: true,
     name: 'Satoshi Trace',
     executableName: 'satoshi-trace',
-    ignore: [/^\/\.git($|\/)/, /^\/\.env/, /^\/out($|\/)/, /^\/test($|\/)/, /^\/test-output($|\/)/, /^\/README\.md$/],
+    icon: path.join(__dirname, 'assets', 'icon'),
+    ignore: [/^\/\.git($|\/)/, /^\/\.env/, /^\/out($|\/)/, /^\/test($|\/)/, /^\/test-support($|\/)/, /^\/test-output($|\/)/, /^\/README\.md$/],
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        setupIcon: path.join(__dirname, 'assets', 'icon.ico'),
+      },
     },
     {
       name: '@electron-forge/maker-zip',
