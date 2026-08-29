@@ -176,7 +176,7 @@ The Isolation Forest score expresses relative unusualness within the imported da
 
 Entity clusters use the common-input heuristic as a conservative ownership hypothesis. Possible collaborative transactions are excluded from clustering, and IP addresses are never treated as proof of wallet ownership.
 
-Opening a cluster renders an interactive address-to-transaction evidence graph. Investigators can switch between concentric rings and a transaction-first flow, fit the graph to the viewport, select nodes for context, and open a transaction from the graph. Complete address and transaction lists remain available below the visualization, while large clusters use disclosed node and edge caps to keep interaction responsive.
+Opening a cluster renders an interactive address-to-transaction evidence graph. Investigators can switch between concentric rings and a transaction-first flow, fit the graph to the viewport, select nodes for context, and open a transaction from the graph. Address and transaction evidence lists remain available below the visualization, while large clusters use disclosed node and edge caps to keep interaction responsive.
 
 ## Evidence and file management
 
