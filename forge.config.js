@@ -29,6 +29,8 @@ module.exports = {
       /^\/test-support($|\/)/,
       /^\/test-output($|\/)/,
       /^\/README\.md$/,
+      /^\/styles\.css$/,
+      /^\/styles\.input\.css$/,
     ],
   },
   rebuildConfig: {},

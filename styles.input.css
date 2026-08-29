@@ -1,0 +1,103 @@
+@import "tailwindcss" source(none);
+@source "./index.html";
+@source "./renderer.js";
+
+@plugin "daisyui" {
+  themes: false;
+  logs: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "satoshi";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f5f7fa;
+  --color-base-300: #e5e9ef;
+  --color-base-content: #17243a;
+  --color-primary: #e88435;
+  --color-primary-content: #ffffff;
+  --color-secondary: #5b7bae;
+  --color-secondary-content: #ffffff;
+  --color-accent: #248675;
+  --color-accent-content: #ffffff;
+  --color-neutral: #111d32;
+  --color-neutral-content: #f5f7fa;
+  --color-info: #5b7bae;
+  --color-info-content: #ffffff;
+  --color-success: #248675;
+  --color-success-content: #ffffff;
+  --color-warning: #d9853b;
+  --color-warning-content: #111d32;
+  --color-error: #cc4c51;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.35rem;
+  --radius-field: 0.4rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@import "./styles.css";
+
+@layer components {
+  .button {
+    @apply btn btn-sm;
+  }
+
+  .button-primary {
+    @apply btn-neutral;
+  }
+
+  .button-accent {
+    @apply btn-primary;
+  }
+
+  .button-danger {
+    @apply btn-error btn-outline;
+  }
+
+  .button-ghost,
+  .link-button {
+    @apply btn-ghost;
+  }
+
+  .panel,
+  .auth-card {
+    @apply card border-base-300 bg-base-100;
+  }
+
+  .data-table {
+    @apply table table-sm;
+  }
+
+  .tag,
+  .pill-number,
+  .actor-chip {
+    @apply badge badge-sm;
+  }
+
+  .search input,
+  input[type="text"],
+  input[type="password"] {
+    @apply input input-sm;
+  }
+
+  select {
+    @apply select select-sm;
+  }
+
+  textarea {
+    @apply textarea textarea-sm;
+  }
+}
+
+main[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.72;
+  transition: opacity 120ms ease;
+}
