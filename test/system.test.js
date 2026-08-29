@@ -36,6 +36,29 @@ test("exact BTC conversion and strict evidence validation", () => {
     /64 hexadecimal/,
   );
 });
+test("returns large aggregate values without unsafe JavaScript conversion", () => {
+  const db = openDatabase(":memory:");
+  const insert = db.prepare(
+    "INSERT INTO transactions VALUES(?,?,?,?,?,?,?,?,?,?)",
+  );
+  for (let index = 0; index < 5; index++) {
+    const txid = index.toString(16).padStart(64, "0");
+    insert.run(
+      txid,
+      '["input"]',
+      '["output"]',
+      '["20000000.00000000"]',
+      '["20000000.00000000"]',
+      2000000000000000,
+      2000000000000000,
+      0,
+      0,
+      txid,
+    );
+  }
+  assert.equal(summary(db).volume_sat, "10000000000000000");
+  db.close();
+});
 for (const format of ["csv", "json", "xml"])
   test(`streams and records provenance for ${format.toUpperCase()}`, async () => {
     const dir = temporary(),

@@ -384,7 +384,11 @@ function summary(db) {
     urgent: scalar(
       "SELECT count(*) FROM lead_scores WHERE priority IN ('Critical','High')",
     ),
-    volume_sat: scalar("SELECT coalesce(sum(output_sat),0) FROM transactions"),
+    // Keep aggregate satoshis as decimal text: valid evidence totals can exceed
+    // JavaScript's safe integer range even while remaining valid SQLite INTEGERs.
+    volume_sat: scalar(
+      "SELECT CAST(coalesce(sum(output_sat),0) AS TEXT) FROM transactions",
+    ),
     imports: db.prepare("SELECT * FROM imports ORDER BY created DESC").all(),
     priorities: db
       .prepare(
