@@ -29,6 +29,8 @@ module.exports = {
       /^\/test-support($|\/)/,
       /^\/test-output($|\/)/,
       /^\/README\.md$/,
+      /^\/CHANGELOG\.md$/,
+      /^\/RELEASE_NOTES_v.*\.md$/,
       /^\/styles\.css$/,
       /^\/styles\.input\.css$/,
     ],

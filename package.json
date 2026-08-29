@@ -1,6 +1,6 @@
 {
   "name": "satoshi-trace",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Port-free offline desktop system for Bitcoin blockchain and network forensics",
   "keywords": [
     "bitcoin",
