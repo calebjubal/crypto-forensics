@@ -1,52 +1,60 @@
-const path = require('node:path');
-const { FusesPlugin } = require('@electron-forge/plugin-fuses');
-const { FuseV1Options, FuseVersion } = require('@electron/fuses');
+const path = require("node:path");
+const { FusesPlugin } = require("@electron-forge/plugin-fuses");
+const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 
 module.exports = {
   publishers: [
     {
-      name: '@electron-forge/publisher-github',
+      name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: 'calebjubal',
-          name: 'crypto-forensics'
+          owner: "calebjubal",
+          name: "crypto-forensics",
         },
         prerelease: false,
-        draft: true
-      }
-    }
+        draft: true,
+      },
+    },
   ],
   packagerConfig: {
     asar: true,
-    name: 'Satoshi Trace',
-    executableName: 'satoshi-trace',
-    icon: path.join(__dirname, 'assets', 'icon'),
-    ignore: [/^\/\.git($|\/)/, /^\/\.env/, /^\/out($|\/)/, /^\/test($|\/)/, /^\/test-support($|\/)/, /^\/test-output($|\/)/, /^\/README\.md$/],
+    name: "Satoshi Trace",
+    executableName: "satoshi-trace",
+    icon: path.join(__dirname, "assets", "icon"),
+    ignore: [
+      /^\/\.git($|\/)/,
+      /^\/\.env/,
+      /^\/out($|\/)/,
+      /^\/test($|\/)/,
+      /^\/test-support($|\/)/,
+      /^\/test-output($|\/)/,
+      /^\/README\.md$/,
+    ],
   },
   rebuildConfig: {},
   makers: [
     {
-      name: '@electron-forge/maker-squirrel',
+      name: "@electron-forge/maker-squirrel",
       config: {
-        setupIcon: path.join(__dirname, 'assets', 'icon.ico'),
+        setupIcon: path.join(__dirname, "assets", "icon.ico"),
       },
     },
     {
-      name: '@electron-forge/maker-zip',
-      platforms: ['darwin'],
+      name: "@electron-forge/maker-zip",
+      platforms: ["darwin"],
     },
     {
-      name: '@electron-forge/maker-deb',
+      name: "@electron-forge/maker-deb",
       config: {},
     },
     {
-      name: '@electron-forge/maker-rpm',
+      name: "@electron-forge/maker-rpm",
       config: {},
     },
   ],
   plugins: [
     {
-      name: '@electron-forge/plugin-auto-unpack-natives',
+      name: "@electron-forge/plugin-auto-unpack-natives",
       config: {},
     },
     // Fuses are used to enable/disable various Electron functionality
