@@ -58,6 +58,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 - **Evidence provenance** — every source records its SHA-256 digest, byte size, ingestion time, and row outcomes.
 - **Local authentication and audit trail** — salted scrypt password hashes protect entry, while operations are recorded in the case database.
 - **Resilient desktop UI** — user-triggered failures appear as toasts and preserve the current dashboard view.
+- **Host connectivity awareness** — a request-free red/green badge reports the operating system's connectivity signal while application transport remains blocked.
 - **Local exports** — investigative leads can be exported as JSON or formula-safe CSV.
 
 ## Quick start
@@ -70,7 +71,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 4. Install and launch Satoshi Trace.
 5. Create the first local investigator account. There is no password-recovery service, so retain the credentials securely.
 
-The prepared `v1.0.2` release targets the Windows installer and Squirrel package metadata. Linux packages are created separately on a compatible Linux build host. Until `v1.0.2` is published, `v1.0.1` remains the latest downloadable release.
+The published `v1.0.2` release contains the Windows installer and Squirrel package metadata. Linux packages are created separately on a compatible Linux build host.
 
 ### Run from source
 

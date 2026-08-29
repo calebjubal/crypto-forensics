@@ -5,10 +5,8 @@ Satoshi Trace v1.0.2 is a maintenance and interface release focused on resilient
 ## Highlights
 
 - **Dashboard-preserving error handling** — user-triggered failures are displayed as toasts instead of replacing the application view with raw error text.
-- **Working Overview pagination** — the priority-lead Previous and Next controls retain their dataset context and five-row page size instead of issuing an invalid Overview page request.
 - **Exact large Bitcoin totals** — valid SQLite satoshi aggregates can exceed JavaScript's safe integer range without breaking IPC responses.
 - **Tailwind CSS and daisyUI interface** — shared controls now use a versioned `satoshi` theme compiled entirely into the packaged application.
-- **Clearer tied scores** — lead tables display the raw Isolation Forest value and use it as a secondary sort while preserving the explainable integer triage score.
 - **Expanded documentation** — the repository now includes complete setup, schema, analysis, security, packaging, and operational guidance.
 
 ## Offline guarantee
