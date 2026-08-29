@@ -9,6 +9,8 @@ The project follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Live host-connectivity badge that displays red when the operating system reports offline and green when it reports online, without making a network request or changing the application's network isolation.
+- Interactive Cytoscape entity-cluster graphs with bundled offline assets, address-to-transaction links, ring and flow layouts, viewport fitting, node evidence context, and transaction drill-down.
+- Bounded cluster graph queries and regression coverage for graph links, preserving responsive visualization while disclosing full evidence counts.
 
 ### Changed
 

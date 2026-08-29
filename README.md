@@ -54,6 +54,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 - **Cross-layer correlation** — joins IP, port, time, geography, and ASN observations to Bitcoin TXIDs, addresses, and amounts.
 - **Local AI/ML analysis** — a bundled Isolation Forest measures relative unusualness without contacting an external service.
 - **Conservative entity clustering** — common-input ownership hypotheses exclude possible collaborative transactions.
+- **Interactive entity graphs** — bundled Cytoscape views map address participation to related transactions with ring and flow layouts.
 - **Explainable lead triage** — Critical, High, Medium, and Low priorities include the measured reasons behind each score.
 - **Evidence provenance** — every source records its SHA-256 digest, byte size, ingestion time, and row outcomes.
 - **Local authentication and audit trail** — salted scrypt password hashes protect entry, while operations are recorded in the case database.
@@ -175,6 +176,8 @@ The Isolation Forest score expresses relative unusualness within the imported da
 
 Entity clusters use the common-input heuristic as a conservative ownership hypothesis. Possible collaborative transactions are excluded from clustering, and IP addresses are never treated as proof of wallet ownership.
 
+Opening a cluster renders an interactive address-to-transaction evidence graph. Investigators can switch between concentric rings and a transaction-first flow, fit the graph to the viewport, select nodes for context, and open a transaction from the graph. Complete address and transaction lists remain available below the visualization, while large clusters use disclosed node and edge caps to keep interaction responsive.
+
 ## Evidence and file management
 
 - Import multiple supported files in a single selection.
@@ -195,7 +198,7 @@ The packaged application loads bundled `file://` assets directly and does not cr
 - Electron context isolation is enabled and the renderer receives a narrow IPC bridge.
 - Electron fuses disable `RunAsNode`, Node CLI inspection, and `NODE_OPTIONS`, while enforcing ASAR integrity and ASAR-only loading.
 - Evidence parsing and analysis run in a local worker thread.
-- SQLite, parsers, ML code, CSS, and icons are bundled; the interface uses local system fonts and never downloads a web font.
+- SQLite, parsers, ML code, Cytoscape, CSS, and icons are bundled; the interface uses local system fonts and never downloads a web font.
 - UNC and network-share evidence paths are rejected.
 - Passwords are stored only as salted scrypt hashes.
 - The audit log records application lifecycle, authentication, navigation, imports, removal, analysis, review, export, cancellation, and failures.
@@ -207,7 +210,7 @@ For defense in depth, deploy on a disconnected workstation and enforce the organ
 | Layer              | Implementation                                            |
 | ------------------ | --------------------------------------------------------- |
 | Desktop runtime    | Electron 44                                               |
-| Interface          | HTML, Tailwind CSS 4, daisyUI 5, Anime.js                 |
+| Interface          | HTML, Tailwind CSS 4, daisyUI 5, Anime.js, Cytoscape.js   |
 | Local storage      | Embedded SQLite with WAL and `synchronous=FULL`           |
 | Ingestion          | Streaming CSV, JSON, and SAX-style XML parsers            |
 | Analytics          | Explainable rules and bundled JavaScript Isolation Forest |
