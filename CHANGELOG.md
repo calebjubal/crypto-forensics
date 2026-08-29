@@ -17,6 +17,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 - Dashboard navigation now keeps the current rendered view visible while a destination is loading.
 - Failed navigation restores the previous route, search state, pagination offset, breadcrumb, and markup before displaying an error toast.
+- Lead tables now show the raw Isolation Forest anomaly value and use it to order otherwise tied triage scores.
 - Buttons, forms, cards, tables, badges, alerts, progress indicators, and authentication controls now use the shared daisyUI design preset.
 - Tailwind and daisyUI remain build-time-only dependencies; the generated local stylesheet is bundled with the application.
 
@@ -24,6 +25,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 - Prevented large SQLite satoshi aggregates from being converted into unsafe JavaScript numbers.
 - Prevented user-triggered route errors from replacing the complete dashboard with raw error text.
+- Fixed Previous and Next pagination on the Overview priority-leads table by retaining its `leads` query context and five-row page size.
 - Preserved the existing interface when an IPC request, list refresh, detail lookup, import, analysis, export, review, deletion, or logout action fails.
 
 ### Verification
