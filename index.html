@@ -1,54 +1,156 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'">
-  <title>Satoshi Trace · Offline Bitcoin Forensics</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script src="./node_modules/animejs/lib/anime.umd.min.js" defer></script>
-  <script src="./renderer.js" defer></script>
-</head>
-<body>
-  <section id="loading-screen" class="entry-screen loading-screen" aria-live="polite">
-    <div class="loading-stage">
-      <div class="loading-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
-      <img id="loading-logo" src="./assets/icon.png" alt="Satoshi Trace">
+<!doctype html>
+<html lang="en" data-theme="satoshi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'"
+    />
+    <title>Satoshi Trace · Offline Bitcoin Forensics</title>
+    <link rel="stylesheet" href="./assets/app.css" />
+    <script src="./node_modules/animejs/lib/anime.umd.min.js" defer></script>
+    <script src="./renderer.js" defer></script>
+  </head>
+  <body>
+    <section
+      id="loading-screen"
+      class="entry-screen loading-screen"
+      aria-live="polite"
+    >
+      <div class="loading-stage">
+        <div class="loading-orbit" aria-hidden="true">
+          <i></i><i></i><i></i>
+        </div>
+        <img id="loading-logo" src="./assets/icon.png" alt="Satoshi Trace" />
+      </div>
+      <h1>Satoshi Trace</h1>
+      <p id="loading-message">Opening encrypted local workspace…</p>
+      <div class="loading-track"><span></span></div>
+    </section>
+    <section id="auth-screen" class="entry-screen auth-screen" hidden>
+      <div class="auth-card">
+        <div class="auth-brand">
+          <img src="./assets/icon.png" alt="" />
+          <div><strong>SATOSHI</strong><span>T R A C E</span></div>
+        </div>
+        <div class="eyebrow" id="auth-eyebrow">LOCAL ACCESS</div>
+        <h1 id="auth-title">Sign in</h1>
+        <p id="auth-description">
+          Authenticate to open the local investigation workspace.
+        </p>
+        <form id="auth-form">
+          <label
+            >Username<input
+              class="input input-bordered"
+              id="auth-username"
+              name="username"
+              autocomplete="username"
+              maxlength="64"
+              required
+          /></label>
+          <label
+            >Password<input
+              class="input input-bordered"
+              id="auth-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              maxlength="256"
+              required
+          /></label>
+          <label id="auth-confirm-row" hidden
+            >Confirm password<input
+              class="input input-bordered"
+              id="auth-confirm"
+              name="confirmPassword"
+              type="password"
+              autocomplete="new-password"
+              maxlength="256"
+          /></label>
+          <p id="auth-error" class="auth-error" role="alert" hidden></p>
+          <button
+            id="auth-submit"
+            class="button button-primary btn btn-neutral auth-submit"
+            type="submit"
+          >
+            Sign in
+          </button>
+        </form>
+        <div class="auth-assurance">
+          <i></i> Credentials and evidence remain on this device
+        </div>
+      </div>
+    </section>
+    <div id="app-shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="#overview" aria-label="Satoshi Trace overview"
+          ><img class="brand-mark" src="./assets/icon.png" alt="" /><span
+            >SATOSHI<span class="brand-sub">T R A C E</span></span
+          ></a
+        >
+        <div class="nav-label">INVESTIGATE</div>
+        <nav id="navigation" aria-label="Main navigation"></nav>
+      </aside>
+      <div class="shell">
+        <header class="topbar">
+          <div class="breadcrumb">
+            <strong id="breadcrumb">Overview</strong>
+          </div>
+          <div class="top-actions">
+            <span class="offline-pill badge badge-success badge-soft"
+              ><i></i> Offline</span
+            ><span id="session-user" class="session-user"></span
+            ><button
+              class="button button-small btn btn-ghost btn-sm"
+              id="logout-button"
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+        <main id="main" tabindex="-1">
+          <div class="loading">Opening local evidence store…</div>
+        </main>
+        <footer>
+          <span
+            ><i class="status-dot"></i> Local SQLite · No network
+            transport</span
+          ><span>Investigative hypotheses. Human review required.</span>
+        </footer>
+      </div>
+      <section id="job" class="job-banner alert" hidden aria-live="polite">
+        <div>
+          <strong id="job-phase">Processing</strong
+          ><span id="job-description"></span>
+        </div>
+        <progress
+          id="job-progress"
+          class="progress progress-primary"
+          max="100"
+          value="0"
+        ></progress
+        ><button
+          class="button button-small btn btn-ghost btn-sm"
+          id="cancel-job"
+        >
+          Cancel
+        </button>
+      </section>
+      <div id="toast" class="toast alert" role="status" hidden></div>
+      <dialog id="detail-dialog">
+        <div class="dialog-top">
+          <span class="eyebrow" id="dialog-label">EVIDENCE DETAIL</span
+          ><button
+            class="icon-button"
+            id="close-dialog"
+            aria-label="Close detail"
+          >
+            ✕
+          </button>
+        </div>
+        <div id="dialog-body"></div>
+      </dialog>
     </div>
-    <h1>Satoshi Trace</h1>
-    <p id="loading-message">Opening encrypted local workspace…</p>
-    <div class="loading-track"><span></span></div>
-  </section>
-  <section id="auth-screen" class="entry-screen auth-screen" hidden>
-    <div class="auth-card">
-      <div class="auth-brand"><img src="./assets/icon.png" alt=""><div><strong>SATOSHI</strong><span>T R A C E</span></div></div>
-      <div class="eyebrow" id="auth-eyebrow">LOCAL ACCESS</div>
-      <h1 id="auth-title">Sign in</h1>
-      <p id="auth-description">Authenticate to open the local investigation workspace.</p>
-      <form id="auth-form">
-        <label>Username<input id="auth-username" name="username" autocomplete="username" maxlength="64" required></label>
-        <label>Password<input id="auth-password" name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
-        <label id="auth-confirm-row" hidden>Confirm password<input id="auth-confirm" name="confirmPassword" type="password" autocomplete="new-password" maxlength="256"></label>
-        <p id="auth-error" class="auth-error" role="alert" hidden></p>
-        <button id="auth-submit" class="button button-primary auth-submit" type="submit">Sign in</button>
-      </form>
-      <div class="auth-assurance"><i></i> Credentials and evidence remain on this device</div>
-    </div>
-  </section>
-  <div id="app-shell" hidden>
-    <aside class="sidebar">
-      <a class="brand" href="#overview" aria-label="Satoshi Trace overview"><img class="brand-mark" src="./assets/icon.png" alt=""><span>SATOSHI<span class="brand-sub">T R A C E</span></span></a>
-      <div class="nav-label">INVESTIGATE</div>
-      <nav id="navigation" aria-label="Main navigation"></nav>
-    </aside>
-    <div class="shell">
-      <header class="topbar"><div class="breadcrumb"><strong id="breadcrumb">Overview</strong></div><div class="top-actions"><span class="offline-pill"><i></i> Offline</span><span id="session-user" class="session-user"></span><button class="button button-small" id="logout-button">Sign out</button></div></header>
-      <main id="main" tabindex="-1"><div class="loading">Opening local evidence store…</div></main>
-      <footer><span><i class="status-dot"></i> Local SQLite · No network transport</span><span>Investigative hypotheses. Human review required.</span></footer>
-    </div>
-    <section id="job" class="job-banner" hidden aria-live="polite"><div><strong id="job-phase">Processing</strong><span id="job-description"></span></div><progress id="job-progress" max="100" value="0"></progress><button class="button button-small" id="cancel-job">Cancel</button></section>
-    <div id="toast" class="toast" role="status" hidden></div>
-    <dialog id="detail-dialog"><div class="dialog-top"><span class="eyebrow" id="dialog-label">EVIDENCE DETAIL</span><button class="icon-button" id="close-dialog" aria-label="Close detail">✕</button></div><div id="dialog-body"></div></dialog>
-  </div>
-</body>
+  </body>
 </html>
