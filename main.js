@@ -2,9 +2,7 @@
 const { app, BrowserWindow, ipcMain, dialog, session, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { pathToFileURL } = require('node:url');
 const { Worker } = require('node:worker_threads');
-const { demoRows, serialize } = require('./src/demo');
 require('./src/offline').denyNetwork();
 if (require('electron-squirrel-startup')) app.quit();
 
@@ -18,7 +16,7 @@ if (process.env.SATOSHI_TEST_DATA && !app.isPackaged) app.setPath('userData',pat
 app.setName('Satoshi Trace');
 let win, worker, nextId = 0, activeJob = false;
 const pending = new Map(), cancellation = new SharedArrayBuffer(4);
-const indexPath = path.join(__dirname,'index.html'), trustedURL = pathToFileURL(indexPath).href;
+const indexPath = path.join(__dirname,'index.html');
 function request(action,payload) {
   return new Promise((resolve,reject) => {
     const id = ++nextId; pending.set(id,{resolve,reject});
@@ -83,21 +81,6 @@ app.whenReady().then(async () => {
     if (selection.canceled) return null;
     for (const file of selection.filePaths) if (file.startsWith('\\\\')) throw new Error('Network-share paths are not allowed. Copy evidence to a local drive first.');
     return job('import',{files:selection.filePaths});
-  });
-  handle('demo',async()=> {
-    const data = await request('summary');
-    if (data.observations) throw new Error('Demo data can only be loaded into an empty case to avoid mixing synthetic and real evidence.');
-    const directory = path.join(app.getPath('userData'),'fixtures');fs.mkdirSync(directory,{recursive:true});
-    const file = path.join(directory,'SYNTHETIC-demo.json');fs.writeFileSync(file,serialize(demoRows(),'json'));
-    await job('import',{files:[file]});return job('analyze');
-  });
-  handle('templates',async()=> {
-    const selected = await dialog.showOpenDialog(win,{title:'Choose a local folder for format examples',properties:['openDirectory','createDirectory']});
-    if (selected.canceled) return null;
-    if (selected.filePaths[0].startsWith('\\\\')) throw new Error('Use a local folder.');
-    const directory = fs.mkdtempSync(path.join(selected.filePaths[0],'satoshi-examples-'));
-    for (const format of ['csv','json','xml']) fs.writeFileSync(path.join(directory,`example.${format}`),serialize(demoRows(3),format),{flag:'wx'});
-    return directory;
   });
   handle('export',async payload=> {
     const format = payload?.format === 'csv' ? 'csv' : 'json';

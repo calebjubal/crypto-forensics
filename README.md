@@ -18,8 +18,6 @@ Each integrated record requires `timestamp`, `src_ip`, `dst_ip`, `src_port`, `ds
 - Amounts are BTC decimals with at most 8 places and are stored as integer satoshis.
 - CSV list fields are JSON arrays in cells; JSON uses a top-level record array; XML uses `<records><record>` and `<item>` array values.
 
-The Evidence screen generates valid examples for all three formats.
-
 ## Development and packaging
 
 ```powershell
