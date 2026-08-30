@@ -1,6 +1,6 @@
 {
   "name": "satoshi-trace",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Port-free offline desktop system for Bitcoin blockchain and network forensics",
   "keywords": [
     "bitcoin",
@@ -40,7 +40,14 @@
     "productName": "Satoshi Trace",
     "executableName": "satoshi-trace",
     "asar": true,
-    "afterPack": "build/after-pack.js",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "directories": {
       "output": "release"
     },
@@ -54,7 +61,7 @@
         "provider": "github",
         "owner": "calebjubal",
         "repo": "crypto-forensics",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "win": {
@@ -87,7 +94,6 @@
     }
   },
   "devDependencies": {
-    "@electron/fuses": "^1.8.0",
     "@tailwindcss/cli": "^4.3.3",
     "daisyui": "^5.7.22",
     "electron": "^44.0.0",
