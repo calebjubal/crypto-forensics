@@ -12,7 +12,6 @@ const fs = require("node:fs");
 const { randomUUID } = require("node:crypto");
 const { Worker } = require("node:worker_threads");
 require("./src/offline").denyNetwork();
-if (require("electron-squirrel-startup")) app.quit();
 
 // Direct local files and OS IPC only: no web server, updater or remote debugger.
 for (const flag of [

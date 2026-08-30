@@ -85,6 +85,7 @@ test-output/
 # Nuxt.js build / generate output
 .nuxt
 dist
+release
 .output
 
 # Gatsby files
