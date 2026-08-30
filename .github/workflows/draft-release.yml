@@ -1,0 +1,184 @@
+name: Update draft release
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: draft-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate release source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Resolve package tag
+        id: release
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Require a matching draft release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              },
+            );
+            const matches = releases.filter(
+              (release) => release.tag_name === tag,
+            );
+            if (matches.length === 0) {
+              core.setFailed(
+                `Create the ${tag} draft release before running this workflow.`,
+              );
+            } else if (matches.length > 1) {
+              core.setFailed(
+                `Found ${matches.length} releases for ${tag}; remove duplicate drafts before continuing.`,
+              );
+            } else if (!matches[0].draft) {
+              core.setFailed(`${tag} exists but is not a draft release.`);
+            } else if (matches[0].target_commitish !== "dev") {
+              core.setFailed(
+                `${tag} targets ${matches[0].target_commitish}, not dev.`,
+              );
+            }
+
+            try {
+              const { data: reference } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tag}`,
+              });
+              let object = reference.object;
+              while (object.type === "tag") {
+                const { data: annotatedTag } = await github.rest.git.getTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_sha: object.sha,
+                });
+                object = annotatedTag.object;
+              }
+              if (object.type !== "commit" || object.sha !== context.sha) {
+                core.setFailed(
+                  `${tag} points to ${object.sha}, but this workflow is building ${context.sha}.`,
+                );
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run regression tests
+        run: npm test
+
+  build:
+    name: Build ${{ matrix.name }} artifacts
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            runner: windows-latest
+            platform: windows
+          - name: Linux
+            runner: ubuntu-latest
+            platform: linux
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build offline stylesheet
+        run: npm run build:css
+
+      - name: Build Windows artifacts
+        if: matrix.platform == 'windows'
+        run: npx electron-builder --win --x64 --publish never
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build Linux artifacts
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux --x64 --publish never
+
+      - name: Preserve distributables for publication
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    name: Update draft release assets
+    needs:
+      - validate
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Collect all platform artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Replace assets in the validated draft
+        run: node build/upload-draft.js
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

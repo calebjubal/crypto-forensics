@@ -72,7 +72,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 4. Install and launch Satoshi Trace.
 5. Create the first local investigator account. There is no password-recovery service, so retain the credentials securely.
 
-The `v1.0.3` release contains the Windows installer and Squirrel package metadata. Linux packages are created separately on a compatible Linux build host.
+The historic `v1.0.3` release uses Squirrel metadata. New source builds use Electron Builder and should be created on the destination operating system or a compatible CI runner.
 
 ### Run from source
 
@@ -215,7 +215,7 @@ For defense in depth, deploy on a disconnected workstation and enforce the organ
 | Ingestion          | Streaming CSV, JSON, and SAX-style XML parsers            |
 | Analytics          | Explainable rules and bundled JavaScript Isolation Forest |
 | Internal transport | Electron IPC and worker messages only                     |
-| Packaging          | Electron Forge with ASAR and hardened Electron fuses      |
+| Packaging          | Electron Builder with ASAR and hardened Electron fuses    |
 
 Tailwind and daisyUI are build-time dependencies. `npm run build:css` generates `assets/app.css`, which is included in the application archive; the CSS toolchain is not required on deployed workstations.
 
@@ -232,23 +232,23 @@ Useful scripts:
 
 | Command           | Purpose                                                                                                |
 | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `npm start`       | Build local CSS and launch Electron Forge in development mode                                          |
+| `npm start`       | Build local CSS and launch Electron in development mode                                                |
 | `npm test`        | Run the ingestion, authentication, analysis, deletion, export-safety, and large-value regression tests |
 | `npm run package` | Create an unpacked application for the current platform                                                |
 | `npm run make`    | Create the configured distributable for the current platform                                           |
 | `npm run verify`  | Run the full test suite and package the application                                                    |
-| `npm run publish` | Build CSS and publish configured Electron Forge artifacts to GitHub Releases                           |
+| `npm run publish` | Build CSS and publish configured Electron Builder artifacts to GitHub Releases                         |
 
 ## Distributables
 
 Build each operating-system package on that operating system or a compatible CI runner.
 
-| Target                 | Forge maker | Typical artifact                                |
-| ---------------------- | ----------- | ----------------------------------------------- |
-| Windows                | Squirrel    | Setup `.exe`, `.nupkg`, and `RELEASES` metadata |
-| Debian / Ubuntu family | DEB         | `.deb` package                                  |
-| Fedora / RHEL family   | RPM         | `.rpm` package                                  |
-| macOS                  | ZIP         | `.zip` application bundle                       |
+| Target                 | Electron Builder target | Typical artifact                     |
+| ---------------------- | ----------------------- | ------------------------------------ |
+| Windows                | NSIS and portable       | Setup `.exe` and portable `.exe`     |
+| Debian / Ubuntu family | DEB                     | `.deb` package                       |
+| Fedora / RHEL family   | RPM                     | `.rpm` package                       |
+| Linux (portable)       | AppImage                | `.AppImage`                          |
 
 ```powershell
 # Current host package
@@ -257,6 +257,19 @@ npm run package
 # Current host distributable
 npm run make
 ```
+
+### Draft GitHub release workflow
+
+The `Update draft release` workflow follows electron-builder's recommended GitHub release process:
+
+1. Set the intended version in `package.json` and `package-lock.json`.
+2. Create a draft GitHub release whose tag is that version prefixed with `v`, such as `v1.0.4`.
+3. Push release-candidate commits to `dev`, or run the workflow manually.
+4. CI verifies that exactly one matching draft exists, runs the test suite, and builds Windows and Linux artifacts without allowing electron-builder to publish them independently.
+5. A final serialized job replaces the draft assets only after every platform build succeeds.
+6. Publish the draft from GitHub only after the artifacts have been reviewed.
+
+The workflow and `npm run publish` both refuse to upload when the matching release is missing, duplicated, already public, targeted at another branch, or associated with a Git tag that points to different source. They build with electron-builder publishing disabled, then perform one draft upload through GitHub CLI to prevent targets from racing to create duplicate releases. Configure `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` repository secrets for Windows signing. With signing secrets absent, electron-builder can still create unsigned Windows test artifacts; Linux packages do not require a code-signing identity.
 
 Production installers should be signed with the platform owner’s trusted code-signing identity before distribution. Signing credentials must remain outside the repository and should be supplied through the secured build environment.
 
@@ -272,7 +285,7 @@ src/parsers.js          Streaming CSV, JSON, and XML ingestion
 src/validation.js       Evidence schema and exact amount validation
 src/worker.js           Local evidence and analytics worker
 test/                   System and regression tests
-forge.config.js         Packaging, makers, publishing, and Electron fuses
+.github/workflows/      Draft-release validation and cross-platform builds
 main.js                 Electron main process and trusted IPC handlers
 preload.js              Context-isolated renderer bridge
 renderer.js             Dashboard behavior and toast-based error handling
