@@ -17,8 +17,6 @@ jobs:
   validate:
     name: Validate release source
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -37,23 +35,55 @@ jobs:
         with:
           script: |
             const tag = process.env.RELEASE_TAG;
-            try {
-              const { data: release } = await github.rest.repos.getReleaseByTag({
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag,
+                per_page: 100,
+              },
+            );
+            const matches = releases.filter(
+              (release) => release.tag_name === tag,
+            );
+            if (matches.length === 0) {
+              core.setFailed(
+                `Create the ${tag} draft release before running this workflow.`,
+              );
+            } else if (matches.length > 1) {
+              core.setFailed(
+                `Found ${matches.length} releases for ${tag}; remove duplicate drafts before continuing.`,
+              );
+            } else if (!matches[0].draft) {
+              core.setFailed(`${tag} exists but is not a draft release.`);
+            } else if (matches[0].target_commitish !== "dev") {
+              core.setFailed(
+                `${tag} targets ${matches[0].target_commitish}, not dev.`,
+              );
+            }
+
+            try {
+              const { data: reference } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tag}`,
               });
-              if (!release.draft) {
-                core.setFailed(`${tag} exists but is not a draft release.`);
+              let object = reference.object;
+              while (object.type === "tag") {
+                const { data: annotatedTag } = await github.rest.git.getTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_sha: object.sha,
+                });
+                object = annotatedTag.object;
+              }
+              if (object.type !== "commit" || object.sha !== context.sha) {
+                core.setFailed(
+                  `${tag} points to ${object.sha}, but this workflow is building ${context.sha}.`,
+                );
               }
             } catch (error) {
-              if (error.status === 404) {
-                core.setFailed(
-                  `Create the ${tag} draft release before running this workflow.`,
-                );
-              } else {
-                throw error;
-              }
+              if (error.status !== 404) throw error;
             }
 
       - name: Set up Node.js
@@ -68,8 +98,8 @@ jobs:
       - name: Run regression tests
         run: npm test
 
-  publish:
-    name: Publish ${{ matrix.name }} artifacts
+  build:
+    name: Build ${{ matrix.name }} artifacts
     needs: validate
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -101,27 +131,69 @@ jobs:
       - name: Build offline stylesheet
         run: npm run build:css
 
-      - name: Build and publish Windows artifacts
+      - name: Build Windows artifacts
         if: matrix.platform == 'windows'
-        run: npx electron-builder --win --x64 --publish always
+        run: npx electron-builder --win --x64 --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Build and publish Linux artifacts
+      - name: Build Linux artifacts
         if: matrix.platform == 'linux'
-        run: npx electron-builder --linux --x64 --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --x64 --publish never
 
-      - name: Build and publish macOS artifacts
+      - name: Build macOS artifacts
         if: matrix.platform == 'macos'
-        run: npx electron-builder --mac --x64 --publish always
+        run: npx electron-builder --mac --x64 --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Preserve distributables for publication
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.dmg
+            release/*.zip
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    name: Update draft release assets
+    needs:
+      - validate
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Collect all platform artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Replace assets in the validated draft
+        run: node build/upload-draft.js
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
