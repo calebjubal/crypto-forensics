@@ -31,7 +31,7 @@
     "package": "npm run build:css && electron-builder --dir",
     "make": "npm run build:css && electron-builder",
     "dist": "npm run make",
-    "publish": "npm run build:css && electron-builder --publish always",
+    "publish": "node build/upload-draft.js --check && npm run make && node build/upload-draft.js",
     "test": "node --experimental-sqlite --test",
     "verify": "npm test && npm run package"
   },
