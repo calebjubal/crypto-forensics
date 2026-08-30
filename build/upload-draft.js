@@ -80,7 +80,7 @@ const releaseAssets = fs
   .map((entry) => entry.name)
   .filter(
     (name) =>
-      /\.(?:AppImage|blockmap|deb|dmg|exe|rpm|yml|zip)$/i.test(name) &&
+      /\.(?:AppImage|blockmap|deb|exe|rpm|yml)$/i.test(name) &&
       !/^builder-(?:debug|effective-config)\./i.test(name),
   )
   .sort()

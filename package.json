@@ -84,13 +84,6 @@
         "deb",
         "rpm"
       ]
-    },
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": [
-        "dmg",
-        "zip"
-      ]
     }
   },
   "devDependencies": {

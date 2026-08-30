@@ -112,9 +112,6 @@ jobs:
           - name: Linux
             runner: ubuntu-latest
             platform: linux
-          - name: macOS
-            runner: macos-latest
-            platform: macos
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -142,16 +139,6 @@ jobs:
         if: matrix.platform == 'linux'
         run: npx electron-builder --linux --x64 --publish never
 
-      - name: Build macOS artifacts
-        if: matrix.platform == 'macos'
-        run: npx electron-builder --mac --x64 --publish never
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
       - name: Preserve distributables for publication
         uses: actions/upload-artifact@v7
         with:
@@ -163,8 +150,6 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.rpm
-            release/*.dmg
-            release/*.zip
             !release/builder-debug.yml
             !release/builder-effective-config.yaml
           if-no-files-found: error
