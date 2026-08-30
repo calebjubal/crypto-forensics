@@ -266,10 +266,11 @@ The `Update draft release` workflow follows electron-builder's recommended GitHu
 1. Set the intended version in `package.json` and `package-lock.json`.
 2. Create a draft GitHub release whose tag is that version prefixed with `v`, such as `v1.0.4`.
 3. Push release-candidate commits to `dev`, or run the workflow manually.
-4. CI verifies the draft, runs the test suite, and replaces its Windows, Linux, and macOS artifacts.
-5. Publish the draft from GitHub only after the artifacts have been reviewed.
+4. CI verifies that exactly one matching draft exists, runs the test suite, and builds Windows, Linux, and macOS artifacts without allowing electron-builder to publish them independently.
+5. A final serialized job replaces the draft assets only after every platform build succeeds.
+6. Publish the draft from GitHub only after the artifacts have been reviewed.
 
-The workflow refuses to upload when the matching release is missing or is already public. Configure `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` repository secrets for Windows signing. Configure `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` for macOS signing and notarization. With signing secrets absent, electron-builder can still create unsigned test artifacts.
+The workflow and `npm run publish` both refuse to upload when the matching release is missing, duplicated, already public, targeted at another branch, or associated with a Git tag that points to different source. They build with electron-builder publishing disabled, then perform one draft upload through GitHub CLI to prevent targets from racing to create duplicate releases. Configure `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` repository secrets for Windows signing. Configure `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` for macOS signing and notarization. With signing secrets absent, electron-builder can still create unsigned test artifacts.
 
 Production installers should be signed with the platform owner’s trusted code-signing identity before distribution. Signing credentials must remain outside the repository and should be supplied through the secured build environment.
 
