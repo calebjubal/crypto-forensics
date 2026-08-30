@@ -14,6 +14,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 - Advanced development metadata to `1.0.4` so draft artifacts cannot collide with the tagged `v1.0.3` release.
 - Moved hardened Electron fuse configuration into electron-builder's native cross-platform integration.
+- Updated GitHub Actions dependencies to Node.js 24-compatible releases.
 
 ## [1.0.3] - 2026-08-29
 
