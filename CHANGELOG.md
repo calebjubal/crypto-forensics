@@ -8,13 +8,14 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- GitHub Actions workflow that validates a matching draft release and publishes Windows, Linux, and macOS electron-builder artifacts whenever `dev` is updated.
+- GitHub Actions workflow that validates a matching draft release and publishes Windows and Linux electron-builder artifacts whenever `dev` is updated.
 
 ### Changed
 
 - Advanced development metadata to `1.0.4` so draft artifacts cannot collide with the tagged `v1.0.3` release.
 - Moved hardened Electron fuse configuration into electron-builder's native cross-platform integration.
 - Updated GitHub Actions dependencies to Node.js 24-compatible releases.
+- Removed macOS packaging from the current release scope.
 
 ### Fixed
 
