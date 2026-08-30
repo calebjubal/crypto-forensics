@@ -243,12 +243,12 @@ Useful scripts:
 
 Build each operating-system package on that operating system or a compatible CI runner.
 
-| Target                 | Electron Builder target | Typical artifact                    |
-| ---------------------- | ----------------------- | ----------------------------------- |
-| Windows                | NSIS and portable       | Setup `.exe` and portable `.exe`    |
-| Debian / Ubuntu family | DEB                     | `.deb` package                      |
-| Fedora / RHEL family   | RPM                     | `.rpm` package                      |
-| Linux (portable)       | AppImage                | `.AppImage`                         |
+| Target                 | Electron Builder target | Typical artifact                     |
+| ---------------------- | ----------------------- | ------------------------------------ |
+| Windows                | NSIS and portable       | Setup `.exe` and portable `.exe`     |
+| Debian / Ubuntu family | DEB                     | `.deb` package                       |
+| Fedora / RHEL family   | RPM                     | `.rpm` package                       |
+| Linux (portable)       | AppImage                | `.AppImage`                          |
 | macOS                  | DMG and ZIP             | `.dmg` and `.zip` application bundle |
 
 ```powershell
@@ -258,6 +258,18 @@ npm run package
 # Current host distributable
 npm run make
 ```
+
+### Draft GitHub release workflow
+
+The `Update draft release` workflow follows electron-builder's recommended GitHub release process:
+
+1. Set the intended version in `package.json` and `package-lock.json`.
+2. Create a draft GitHub release whose tag is that version prefixed with `v`, such as `v1.0.4`.
+3. Push release-candidate commits to `dev`, or run the workflow manually.
+4. CI verifies the draft, runs the test suite, and replaces its Windows, Linux, and macOS artifacts.
+5. Publish the draft from GitHub only after the artifacts have been reviewed.
+
+The workflow refuses to upload when the matching release is missing or is already public. Configure `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` repository secrets for Windows signing. Configure `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` for macOS signing and notarization. With signing secrets absent, electron-builder can still create unsigned test artifacts.
 
 Production installers should be signed with the platform owner’s trusted code-signing identity before distribution. Signing credentials must remain outside the repository and should be supplied through the secured build environment.
 
@@ -273,7 +285,7 @@ src/parsers.js          Streaming CSV, JSON, and XML ingestion
 src/validation.js       Evidence schema and exact amount validation
 src/worker.js           Local evidence and analytics worker
 test/                   System and regression tests
-build/after-pack.js     Packaging hook that applies hardened Electron fuses
+.github/workflows/      Draft-release validation and cross-platform builds
 main.js                 Electron main process and trusted IPC handlers
 preload.js              Context-isolated renderer bridge
 renderer.js             Dashboard behavior and toast-based error handling
