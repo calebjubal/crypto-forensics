@@ -21,7 +21,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve package tag
         id: release
@@ -31,7 +31,7 @@ jobs:
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Require a matching draft release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         with:
@@ -57,7 +57,7 @@ jobs:
             }
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -87,10 +87,10 @@ jobs:
             platform: macos
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
