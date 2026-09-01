@@ -42,7 +42,13 @@ const state = {
   limit: 25,
   busy: false,
   selectedTx: null,
+  selectedLead: null,
   clusterGraph: null,
+  mapGraph: null,
+  mapOverview: null,
+  mapResizeObserver: null,
+  mapViewAnimation: null,
+  settingsSearch: "",
   username: "",
   authMode: "login",
 };
@@ -55,6 +61,7 @@ const routes = [
   ["activity", "Activity log", "audit"],
   ["methodology", "Methodology", "shield"],
   ["system", "Offline assurance", "lock"],
+  ["settings", "Settings", "settings"],
 ];
 const icons = {
   grid: '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
@@ -69,6 +76,8 @@ const icons = {
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>',
   upload: '<path d="M12 16V3m-5 5l5-5 5 5M4 16v4h16v-4"/>',
   audit: '<path d="M4 5h16M4 12h16M4 19h10"/><circle cx="18" cy="19" r="2"/>',
+  settings:
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6v.2h-4v-.2a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 00.3-1.9A1.7 1.7 0 003 14H2.8v-4H3a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 001.9.3A1.7 1.7 0 0010 3v-.2h4V3a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 00-.3 1.9 1.7 1.7 0 001.6 1h.2v4H21a1.7 1.7 0 00-1.6 1z"/>',
 };
 function icon(n) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[n] || icons.grid}</svg>`;
@@ -106,6 +115,58 @@ function trunc(v, l = 14) {
 }
 function badge(p = "Low") {
   return `<span class="badge ${esc(p.toLowerCase())}">${esc(p)}</span>`;
+}
+const CLUSTER_PALETTE = [
+  "#38bdf8",
+  "#f59e0b",
+  "#34d399",
+  "#f472b6",
+  "#a78bfa",
+  "#fb7185",
+  "#22d3ee",
+  "#facc15",
+  "#4ade80",
+  "#c084fc",
+  "#60a5fa",
+  "#f97316",
+];
+function colorStorageKey() {
+  return `satoshi-trace.cluster-colors.v1:${state.username || "local"}`;
+}
+function colorOverrides() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(colorStorageKey()) || "{}");
+    return Object.fromEntries(
+      Object.entries(stored).filter(
+        ([key, value]) => key && /^#[0-9a-f]{6}$/i.test(value),
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+function defaultClusterColor(id) {
+  let hash = 2166136261;
+  for (const character of String(id || "")) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return CLUSTER_PALETTE[Math.abs(hash) % CLUSTER_PALETTE.length];
+}
+function clusterColor(id) {
+  if (!id) return "#7890aa";
+  return colorOverrides()[id] || defaultClusterColor(id);
+}
+function saveClusterColor(id, value) {
+  if (!id || !/^#[0-9a-f]{6}$/i.test(value)) return;
+  const overrides = colorOverrides();
+  overrides[id] = value.toLowerCase();
+  localStorage.setItem(colorStorageKey(), JSON.stringify(overrides));
+}
+function resetClusterColor(id) {
+  const overrides = colorOverrides();
+  delete overrides[id];
+  localStorage.setItem(colorStorageKey(), JSON.stringify(overrides));
 }
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches,
   animations = [];
@@ -344,6 +405,49 @@ async function refreshList(type, limit = state.limit) {
     fail(e);
   }
 }
+function mapLeadList(d) {
+  if (!d.rows.length)
+    return '<div class="map-list-empty">No leads match the current filters.</div>';
+  return `<div class="map-lead-list" role="listbox" aria-label="Priority leads">${d.rows
+    .map(
+      (row) =>
+        `<article class="map-lead-card ${state.selectedLead === row.txid ? "selected" : ""}" role="option" tabindex="0" aria-selected="${state.selectedLead === row.txid}" data-map-lead="${esc(row.txid)}"><div class="map-lead-card-top">${badge(row.priority)}<span class="map-lead-score">${row.score}<small>/100</small></span></div><strong class="mono" title="${esc(row.txid)}">${esc(trunc(row.txid, 28))}</strong><p>${esc(row.category)} · ${date(row.timestamp)}</p><div class="map-lead-card-bottom"><span class="mono">${esc(row.src_ip || "No source IP")}</span><span>${esc(row.status)}</span><button class="link-button" data-tx="${esc(row.txid)}">Inspect →</button></div></article>`,
+    )
+    .join("")}</div><div class="map-lead-pagination"><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)}</span>${pager(d, "leads-map")}</div>`;
+}
+async function refreshMapLeadList(limit = state.limit) {
+  try {
+    const data = await api.page({
+      type: "leads",
+      options: {
+        search: state.search,
+        priority: state.priority,
+        status: state.status,
+        offset: state.offset,
+        limit,
+      },
+    });
+    const results = document.querySelector(".map-lead-results");
+    if (results) results.innerHTML = mapLeadList(data);
+  } catch (error) {
+    fail(error);
+  }
+}
+async function leadsWorkspace() {
+  destroyMapGraph();
+  state.selectedLead = null;
+  main.innerHTML =
+    heading(
+      "GLOBAL TRANSACTION INTELLIGENCE",
+      "Priority leads map",
+      "Review flagged hypotheses against the full offline network-observation context.",
+      '<button class="button" data-action="export-json">Export JSON</button><button class="button" data-action="export-csv">Export CSV</button><button class="button button-primary" data-action="analyze">Re-run analysis</button>',
+    ) +
+    staleNotice() +
+    `<section class="lead-map-layout"><aside class="map-lead-panel panel"><div class="map-lead-toolbar"><label class="search"><span class="screen-reader">Search priority leads</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, wallet, or IP…"></label><div class="map-lead-filters"><select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((value) => `<option ${state.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div></div><div class="map-lead-results"><div class="loading">Loading flag list…</div></div></aside><section class="transaction-map-panel" aria-label="Transaction world map"><div class="transaction-map-head"><div><span class="eyebrow">FULL CASE CONTEXT</span><h2>Transaction routes</h2><p id="map-caption">Loading offline city correlations…</p></div><button class="map-clear button button-small" data-map-clear hidden>Clear focus</button></div><div id="map-stats" class="map-stats" aria-live="polite"></div><div class="transaction-map-stage"><div id="transaction-map" class="transaction-map" role="img" aria-label="World map of aggregated transaction observations"></div><div id="map-empty" class="map-empty" hidden></div></div><div class="transaction-map-legend"><span><i class="map-key dotted"></i>Aggregated transaction route</span><span><i class="map-key solid"></i>Selected lead path</span><span><i class="map-key wallet"></i>Cluster-colored wallet</span></div><div class="map-status"><span id="map-selection">Select a lead to reveal its IP, transaction, and wallet path.</span><span id="map-attribution"></span></div></section></section>`;
+  await refreshMapLeadList();
+  await loadMapOverview();
+}
 function schema() {
   return [
     ["timestamp", "ISO 8601 + timezone"],
@@ -449,7 +553,7 @@ async function methodology() {
       )
       .join(
         "",
-      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Model</span><strong>${c.modelAvailable ? "Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Training rows</span><strong>${num(c.trainingRows)} / 8,192</strong></div><div class="kv"><span>Forest</span><strong>${c.modelAvailable ? `${c.trees} trees · sample ${c.subsample}` : "Requires ≥32 transactions"}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Feature set: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nClustering: ${esc(c.clustering)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
+      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>World map interpretation</h2><p>Approximate context, never evidentiary location proof</p></div></div><div class="panel-body"><ol class="method-list"><li>DB-IP City Lite resolves IPv4 and IPv6 endpoints entirely offline and is cached only for the current session.</li><li>Unmatched or non-public IPs use supplied country metadata as a labelled country-centroid fallback, or remain unlocated.</li><li>Dotted overview routes aggregate all observations by source city, destination city, and common-input cluster while preserving totals.</li><li>Selecting one lead adds its bold IP → transaction → IP and transaction → wallet path; graph limits are disclosed with count nodes.</li><li>Approximate location and IP association do not prove identity, physical presence, wallet ownership, or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Model</span><strong>${c.modelAvailable ? "Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Training rows</span><strong>${num(c.trainingRows)} / 8,192</strong></div><div class="kv"><span>Forest</span><strong>${c.modelAvailable ? `${c.trees} trees · sample ${c.subsample}` : "Requires ≥32 transactions"}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Feature set: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nClustering: ${esc(c.clustering)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
       ["Large value", "+25 · ≥100 BTC and above robust cutoff"],
       ["High fee", "+28 · >5% and ≥0.0001 BTC"],
       ["Fan-out", "+20 · ≥10 outputs"],
@@ -472,7 +576,43 @@ async function system() {
       "Offline assurance",
       "Runtime and storage controls.",
     ) +
-    `<div class="notice info"><span>Bundled files use Electron IPC and a worker MessagePort. Network APIs, remote content, permissions, downloads, and TCP/UDP listeners are disabled.</span></div><section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Runtime</h2></div><span class="badge low">LOCAL</span></div><div class="panel-body"><div class="kv"><span>Network</span><strong>${esc(e.network)}</strong></div><div class="kv"><span>Application listeners</span><strong>${e.ports}</strong></div><div class="kv"><span>Internal transport</span><strong>${esc(e.transport)}</strong></div><div class="kv"><span>Remote content</span><strong>Denied</strong></div><div class="kv"><span>Permissions / downloads</span><strong>Denied</strong></div></div></article><article class="panel"><div class="panel-head"><div><h2>Storage</h2></div></div><div class="panel-body"><p class="full-path">${esc(e.database)}</p><div class="kv"><span>Database</span><strong>Embedded SQLite</strong></div><div class="kv"><span>Journal</span><strong>WAL · synchronous FULL</strong></div><div class="kv"><span>Amounts</span><strong>Integer satoshis</strong></div><div class="kv"><span>Source integrity</span><strong>SHA-256</strong></div></div></article></section><section class="panel"><div class="panel-head"><div><h2>Bundled runtime</h2></div></div><div class="panel-body"><div class="kv"><span>Satoshi Trace</span><strong>${esc(e.application)}</strong></div><div class="kv"><span>Electron / Node</span><strong>${esc(e.electron)} / ${esc(e.node)}</strong></div><div class="kv"><span>ML</span><strong>Bundled JavaScript</strong></div><div class="kv"><span>Geo lookup</span><strong>None · supplied fields only</strong></div></div></section>`;
+    `<div class="notice info"><span>Bundled files use Electron IPC and a worker MessagePort. Network APIs, remote content, permissions, downloads, and TCP/UDP listeners are disabled.</span></div><section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Runtime</h2></div><span class="badge low">LOCAL</span></div><div class="panel-body"><div class="kv"><span>Network</span><strong>${esc(e.network)}</strong></div><div class="kv"><span>Application listeners</span><strong>${e.ports}</strong></div><div class="kv"><span>Internal transport</span><strong>${esc(e.transport)}</strong></div><div class="kv"><span>Remote content</span><strong>Denied</strong></div><div class="kv"><span>Permissions / downloads</span><strong>Denied</strong></div></div></article><article class="panel"><div class="panel-head"><div><h2>Storage</h2></div></div><div class="panel-body"><p class="full-path">${esc(e.database)}</p><div class="kv"><span>Database</span><strong>Embedded SQLite</strong></div><div class="kv"><span>Journal</span><strong>WAL · synchronous FULL</strong></div><div class="kv"><span>Amounts</span><strong>Integer satoshis</strong></div><div class="kv"><span>Source integrity</span><strong>SHA-256</strong></div></div></article></section><section class="panel"><div class="panel-head"><div><h2>Bundled runtime</h2></div></div><div class="panel-body"><div class="kv"><span>Satoshi Trace</span><strong>${esc(e.application)}</strong></div><div class="kv"><span>Electron / Node</span><strong>${esc(e.electron)} / ${esc(e.node)}</strong></div><div class="kv"><span>ML</span><strong>Bundled JavaScript</strong></div><div class="kv"><span>Geo lookup</span><strong>${esc(e.geoip)}</strong></div><div class="kv"><span>Geo transport</span><strong>None · packaged MMDB only</strong></div></div></section>`;
+}
+function settingsClusterRows(data) {
+  const overrides = colorOverrides();
+  if (!data.rows.length)
+    return '<div class="empty">No clusters match this search.</div>';
+  return `<div class="cluster-settings-list">${data.rows
+    .map((cluster) => {
+      const value = clusterColor(cluster.id),
+        overridden = !!overrides[cluster.id];
+      return `<div class="cluster-setting-row" data-cluster-setting="${esc(cluster.id)}"><div class="cluster-setting-swatch" style="--cluster-color:${esc(value)}"></div><div><strong class="mono">${esc(cluster.id)}</strong><span>${num(cluster.size)} addresses · ${num(cluster.tx_count)} transactions · ${overridden ? "Custom override" : "Deterministic default"}</span></div><label><span class="screen-reader">Color for ${esc(cluster.id)}</span><input type="color" value="${esc(value)}" data-cluster-color="${esc(cluster.id)}"></label><button class="button button-small" data-reset-cluster="${esc(cluster.id)}" ${overridden ? "" : "disabled"}>Reset</button></div>`;
+    })
+    .join("")}</div><div class="table-footer"><span>Showing ${data.offset + 1}–${Math.min(data.total, data.offset + data.rows.length)} of ${num(data.total)} clusters</span>${pager(data, "settings-clusters")}</div>`;
+}
+async function refreshSettingsClusters(offset = state.offset) {
+  const results = document.querySelector(".cluster-settings-results");
+  if (!results) return;
+  try {
+    const data = await api.page({
+      type: "clusters",
+      options: { search: state.settingsSearch, offset, limit: 50 },
+    });
+    results.innerHTML = settingsClusterRows(data);
+  } catch (error) {
+    results.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
+  }
+}
+async function settings() {
+  main.innerHTML =
+    heading(
+      "VISUAL PREFERENCES",
+      "Settings",
+      "Customize cluster colors for this local investigator account.",
+      '<button class="button" data-reset-all-clusters>Reset all cluster colors</button>',
+    ) +
+    `<section class="panel settings-panel"><div class="panel-head"><div><h2>Cluster color mapping</h2><p>Defaults are derived from stable cluster IDs. Overrides affect the world map and entity graphs.</p></div><span class="tag">DEVICE LOCAL</span></div><div class="settings-search"><label class="search"><span class="screen-reader">Search clusters or member addresses</span><input id="cluster-settings-search" type="text" value="${esc(state.settingsSearch)}" placeholder="Find cluster ID or member wallet…"></label></div><div class="cluster-settings-results"><div class="loading">Loading cluster colors…</div></div></section><section class="panel mt"><div class="panel-head"><div><h2>Offline map data</h2><p>Approximate geolocation metadata—not evidence of identity or physical presence</p></div></div><div class="panel-body"><div class="kv"><span>Database</span><strong>DB-IP City Lite · September 2026</strong></div><div class="kv"><span>License</span><strong>CC BY 4.0</strong></div><div class="kv"><span>Update policy</span><strong>Bundled with application releases only</strong></div><p class="form-note">IP Geolocation by DB-IP. Reduced-accuracy city results remain entirely offline. Postal code, ISP, domain, connection type, and accuracy radius are not inferred.</p></div></section>`;
+  await refreshSettingsClusters();
 }
 async function navigate(route, push = true) {
   const previous = {
@@ -483,6 +623,7 @@ async function navigate(route, push = true) {
     markup: main.innerHTML,
   };
   if (!routes.some((x) => x[0] === route)) route = "overview";
+  if (state.route === "leads" && route !== "leads") destroyMapGraph();
   state.route = route;
   state.search = "";
   state.offset = 0;
@@ -497,10 +638,11 @@ async function navigate(route, push = true) {
       evidence,
       transactions: () => listing("transactions"),
       clusters,
-      leads: () => listing("leads"),
+      leads: leadsWorkspace,
       activity,
       methodology,
       system,
+      settings,
     }[route]();
     await api.auditEvent({ action: "view.opened", details: { view: route } });
     main.focus({ preventScroll: true });
@@ -535,6 +677,525 @@ function txGraph(d) {
       ...outs.map((v, i) => ({ v, type: "wallet", x: 630, y: 136 + i * 38 })),
     ];
   return `<div class="graph-wrap detail-graph"><svg viewBox="0 0 700 230" role="img">${nodes.map((n) => `<path class="graph-edge ${n.type === "ip" ? "network" : ""}" d="M${n.x} ${n.y}L350 115"/>`).join("")}<circle class="graph-circle tx" cx="350" cy="115" r="34"/><text class="graph-inner tx" x="350" y="122" text-anchor="middle">₿</text>${nodes.map((n) => `<circle class="graph-circle ${n.type === "wallet" ? "wallet" : ""}" cx="${n.x}" cy="${n.y}" r="18"/><text class="graph-inner ${n.type === "wallet" ? "wallet" : ""}" x="${n.x}" y="${n.y + 4}" text-anchor="middle">${n.type === "wallet" ? "W" : "IP"}</text><text class="graph-label" x="${n.x < 350 ? n.x + 26 : n.x - 26}" y="${n.y + 4}" text-anchor="${n.x < 350 ? "start" : "end"}">${esc(trunc(n.v, 18))}</text>`).join("")}</svg></div><div class="graph-legend"><span><i class="legend-symbol"></i>Observed endpoint</span><span><i class="legend-symbol navy"></i>Exact TXID</span><span><i class="legend-symbol orange"></i>Blockchain address</span><span class="graph-footnote">Associations are not ownership proof</span></div>`;
+}
+function destroyMapGraph() {
+  state.mapResizeObserver?.disconnect();
+  state.mapResizeObserver = null;
+  state.mapViewAnimation?.cancel?.();
+  state.mapViewAnimation = null;
+  const container = document.getElementById("transaction-map");
+  if (container) container.style.transform = "";
+  state.mapGraph?.destroy();
+  state.mapGraph = null;
+  state.mapOverview = null;
+}
+function mapPoint(latitude, longitude, index = 0) {
+  const container = document.getElementById("transaction-map"),
+    width = Math.max(1, container?.clientWidth || 1000),
+    height = Math.max(1, container?.clientHeight || 483);
+  if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude)))
+    return {
+      x: 26 + (index % Math.max(1, Math.floor(width / 52))) * 52,
+      y: height - 24 - Math.floor(index / Math.max(1, Math.floor(width / 52))) * 34,
+    };
+  return {
+    x: Math.max(12, Math.min(width - 12, ((Number(longitude) + 180) / 360) * width)),
+    y: Math.max(
+      12,
+      Math.min(
+        height - 12,
+        ((83.64513 - Number(latitude)) / 173.64513) * height,
+      ),
+    ),
+  };
+}
+function positionMapGraph() {
+  const graph = state.mapGraph;
+  if (!graph) return;
+  let unlocated = 0;
+  graph.nodes().forEach((node) => {
+    const kind = node.data("kind");
+    if (["place", "endpoint", "transaction"].includes(kind)) {
+      const located =
+        node.data("latitude") !== null &&
+        node.data("latitude") !== undefined &&
+        node.data("longitude") !== null &&
+        node.data("longitude") !== undefined &&
+        Number.isFinite(Number(node.data("latitude"))) &&
+        Number.isFinite(Number(node.data("longitude")));
+      node.position(
+        mapPoint(
+          located ? node.data("latitude") : null,
+          located ? node.data("longitude") : null,
+          located ? 0 : unlocated++,
+        ),
+      );
+      return;
+    }
+    const transaction = graph.getElementById("focus:transaction"),
+      center = transaction.length
+        ? transaction.position()
+        : mapPoint(0, 0),
+      side = node.data("side") || "output",
+      slot = Number(node.data("slot")) || 0,
+      ring = Math.floor(slot / 12),
+      step = slot % 12,
+      direction = side === "input" ? -1 : 1,
+      point = {
+        x: center.x + direction * (58 + ring * 24),
+        y: center.y + (step - 5.5) * 13,
+      },
+      container = document.getElementById("transaction-map");
+    node.position({
+      x: Math.max(15, Math.min((container?.clientWidth || 1000) - 15, point.x)),
+      y: Math.max(15, Math.min((container?.clientHeight || 483) - 15, point.y)),
+    });
+  });
+}
+function setMapViewport({ x = 0, y = 0, scale = 1 }, animated = true) {
+  const container = document.getElementById("transaction-map");
+  if (!container) return;
+  state.mapViewAnimation?.cancel?.();
+  state.mapViewAnimation = null;
+  if (reducedMotion || !animated || !window.anime?.animate) {
+    container.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    return;
+  }
+  const animation = window.anime.animate(container, {
+    translateX: x,
+    translateY: y,
+    scale,
+    duration: 620,
+    ease: "outCubic",
+    onComplete: () => {
+      if (state.mapViewAnimation === animation) state.mapViewAnimation = null;
+    },
+  });
+  state.mapViewAnimation = animation;
+}
+function focusMapViewport(animated = true) {
+  const graph = state.mapGraph,
+    container = document.getElementById("transaction-map"),
+    focusNodes = graph?.nodes(".focus");
+  if (!graph || !container || !focusNodes?.length) return;
+  const bounds = focusNodes.boundingBox({
+      includeLabels: false,
+      includeOverlays: false,
+    }),
+    width = Math.max(1, container.clientWidth),
+    height = Math.max(1, container.clientHeight),
+    fittedScale = Math.min(
+      (width - 36) / Math.max(160, bounds.w),
+      (height - 36) / Math.max(120, bounds.h),
+    ),
+    scale = Math.max(1.08, Math.min(1.7, fittedScale)),
+    centerX = bounds.x1 + bounds.w / 2,
+    centerY = bounds.y1 + bounds.h / 2,
+    x = Math.min(
+      0,
+      Math.max(width - width * scale, width / 2 - centerX * scale),
+    ),
+    y = Math.min(
+      0,
+      Math.max(height - height * scale, height / 2 - centerY * scale),
+    );
+  setMapViewport({ x, y, scale }, animated);
+}
+function resizeMapGraph() {
+  positionMapGraph();
+  if (state.selectedLead) focusMapViewport(false);
+}
+function renderMapOverview(data) {
+  const container = document.getElementById("transaction-map"),
+    status = document.getElementById("map-selection");
+  if (!container || typeof window.cytoscape !== "function") {
+    if (status)
+      status.textContent =
+        "Interactive map unavailable. Lead records remain available in the flag list.";
+    return;
+  }
+  destroyMapGraph();
+  state.mapOverview = data;
+  const placeIds = new Map(),
+    elements = [];
+  data.locations.forEach((location, index) => {
+    const id = `place:${index}`;
+    placeIds.set(location.id, id);
+    elements.push({
+      classes: "overview",
+      data: {
+        id,
+        kind: "place",
+        label:
+          location.id === "unlocated"
+            ? "Unlocated"
+            : `${location.city || location.countryName} · ${num(location.observationCount)}`,
+        detail: `${location.city || "Unknown city"}${location.region ? `, ${location.region}` : ""}, ${location.countryName || "unknown country"} · ${num(location.uniqueIpCount)} IPs · ${location.source === "db-ip-city-lite" ? "DB-IP approximate city" : "supplied-country fallback"}${location.countryConflictCount ? ` · ${num(location.countryConflictCount)} supplied/derived country mismatches` : ""}`,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        size: Math.min(34, 10 + Math.log2(location.observationCount + 1) * 3),
+      },
+    });
+  });
+  data.routes.forEach((route, index) => {
+    const source = placeIds.get(route.source),
+      target = placeIds.get(route.target);
+    if (!source || !target) return;
+    const breakdown = route.clusterBreakdown
+      ? route.clusterBreakdown
+          .slice(0, 4)
+          .map(
+            (entry) =>
+              `${entry.clusterId || "Unclustered"}: ${num(entry.count)}`,
+          )
+          .join(" · ")
+      : route.clusterId || "Unclustered";
+    elements.push({
+      classes: "overview",
+      data: {
+        id: `overview:route:${index}`,
+        kind: "route",
+        source,
+        target,
+        color: clusterColor(route.clusterId),
+        width: Math.min(4, 0.8 + Math.log2(route.observationCount + 1) * 0.45),
+        detail: `${num(route.observationCount)} observations · ${num(route.transactionCount)} transactions · ${num(route.uniqueIpCount)} IPs · ${breakdown}`,
+      },
+    });
+  });
+  state.mapGraph = window.cytoscape({
+    container,
+    elements,
+    layout: { name: "preset", fit: false },
+    userPanningEnabled: false,
+    userZoomingEnabled: false,
+    boxSelectionEnabled: false,
+    autoungrabify: true,
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          "font-family": "Inter, Segoe UI, sans-serif",
+          "font-size": 8,
+          color: "#dbeafe",
+          "text-outline-color": "#071a33",
+          "text-outline-width": 2,
+          "text-valign": "bottom",
+          "text-margin-y": 7,
+          "overlay-opacity": 0,
+          "z-index": 5,
+        },
+      },
+      {
+        selector: 'node[kind = "place"]',
+        style: {
+          width: "data(size)",
+          height: "data(size)",
+          "background-color": "#7dd3fc",
+          "border-width": 2,
+          "border-color": "#e0f2fe",
+          opacity: 0.88,
+        },
+      },
+      {
+        selector: 'edge[kind = "route"]',
+        style: {
+          width: "data(width)",
+          "line-color": "data(color)",
+          "line-style": "dotted",
+          "curve-style": "bezier",
+          opacity: 0.5,
+          "overlay-opacity": 0,
+          "z-index": 2,
+        },
+      },
+      {
+        selector: ".dimmed",
+        style: { opacity: 0.14 },
+      },
+      {
+        selector: 'node[kind = "endpoint"]',
+        style: {
+          shape: "ellipse",
+          width: 25,
+          height: 25,
+          "font-size": 7,
+          "background-color": "#22d3ee",
+          "border-color": "#ecfeff",
+          "border-width": 3,
+          "z-index": 20,
+        },
+      },
+      {
+        selector: 'node[kind = "transaction"]',
+        style: {
+          shape: "diamond",
+          width: 54,
+          height: 54,
+          "font-size": 11,
+          "font-weight": 700,
+          "text-valign": "center",
+          "text-margin-y": 0,
+          color: "#ffffff",
+          "background-color": "#dc2626",
+          "border-color": "#fecaca",
+          "border-width": 4,
+          "z-index": 30,
+        },
+      },
+      {
+        selector: 'node[kind = "wallet"]',
+        style: {
+          shape: "round-rectangle",
+          width: 30,
+          height: 24,
+          label: "W",
+          "font-size": 9,
+          "font-weight": 700,
+          "text-valign": "center",
+          "text-margin-y": 0,
+          color: "#071a33",
+          "background-color": "data(color)",
+          "border-color": "#ffffff",
+          "border-width": 2,
+          "z-index": 25,
+        },
+      },
+      {
+        selector: 'node[kind $= "summary"]',
+        style: {
+          shape: "round-rectangle",
+          width: "label",
+          height: 24,
+          padding: 6,
+          "background-color": "#334155",
+          "border-color": "#94a3b8",
+          "border-width": 2,
+          "font-size": 8,
+          "text-valign": "center",
+          "text-margin-y": 0,
+          "z-index": 24,
+        },
+      },
+      {
+        selector: 'edge[kind = "focus-network"]',
+        style: {
+          width: 4,
+          "line-color": "#22d3ee",
+          "target-arrow-color": "#22d3ee",
+          "target-arrow-shape": "triangle",
+          "curve-style": "straight",
+          "line-style": "solid",
+          opacity: 1,
+          "z-index": 22,
+        },
+      },
+      {
+        selector: 'edge[kind = "focus-wallet"]',
+        style: {
+          width: 4,
+          "line-color": "data(color)",
+          "target-arrow-color": "data(color)",
+          "target-arrow-shape": "triangle",
+          "curve-style": "straight",
+          "line-style": "solid",
+          opacity: 1,
+          "z-index": 23,
+        },
+      },
+    ],
+  });
+  positionMapGraph();
+  state.mapResizeObserver = new ResizeObserver(resizeMapGraph);
+  state.mapResizeObserver.observe(container);
+  state.mapGraph.on("tap", "node,edge", (event) => {
+    status.textContent = event.target.data("detail") || "Evidence relationship";
+  });
+  state.mapGraph.on("tap", (event) => {
+    if (event.target === state.mapGraph && !state.selectedLead)
+      status.textContent =
+        "Select a lead to reveal its IP, transaction, and wallet path.";
+  });
+}
+function clearMapFocus() {
+  state.selectedLead = null;
+  state.mapGraph?.elements(".focus").remove();
+  state.mapGraph?.elements(".overview").removeClass("dimmed");
+  setMapViewport({}, true);
+  document
+    .querySelectorAll(".map-lead-card")
+    .forEach((card) => {
+      card.classList.remove("selected");
+      card.setAttribute("aria-selected", "false");
+    });
+  const clear = document.querySelector("[data-map-clear]");
+  if (clear) clear.hidden = true;
+  const status = document.getElementById("map-selection");
+  if (status)
+    status.textContent =
+      "Select a lead to reveal its IP, transaction, and wallet path.";
+}
+function renderLeadFocus(data) {
+  const graph = state.mapGraph;
+  if (!graph) return;
+  graph.elements(".focus").remove();
+  graph.elements(".overview").addClass("dimmed");
+  const transactionId = "focus:transaction",
+    elements = [
+      {
+        classes: "focus",
+        data: {
+          id: transactionId,
+          kind: "transaction",
+          label: `${data.transaction.priority || "Lead"}\n${data.transaction.score ?? "—"}/100`,
+          detail: `Transaction ${data.transaction.txid} · ${data.transaction.category || "No category"}`,
+          latitude: data.center.latitude,
+          longitude: data.center.longitude,
+        },
+      },
+    ];
+  data.endpoints.forEach((endpoint, index) => {
+    const id = `focus:endpoint:${index}`;
+    elements.push({
+      classes: "focus",
+      data: {
+        id,
+        kind: "endpoint",
+        role: endpoint.role,
+        label: endpoint.role === "source" ? "SRC IP" : "DST IP",
+        detail: `${endpoint.ip} · ${endpoint.city || "Unlocated"}${endpoint.region ? `, ${endpoint.region}` : ""} · ${endpoint.countryName || "unknown country"} · ${endpoint.source === "db-ip-city-lite" ? "DB-IP approximate city" : "supplied-country fallback"}${endpoint.countryConflict ? ` · supplied country ${endpoint.suppliedCountry} conflicts with derived ${endpoint.country}` : ""}`,
+        latitude: endpoint.latitude,
+        longitude: endpoint.longitude,
+      },
+    });
+    elements.push({
+      classes: "focus",
+      data: {
+        id: `focus:network-edge:${index}`,
+        kind: "focus-network",
+        source: endpoint.role === "source" ? id : transactionId,
+        target: endpoint.role === "source" ? transactionId : id,
+      },
+    });
+  });
+  const sideSlots = { input: 0, output: 0 };
+  data.wallets.forEach((wallet, index) => {
+    const id = `focus:wallet:${index}`,
+      color = clusterColor(wallet.cluster_id),
+      side = wallet.side === "input" ? "input" : "output";
+    elements.push({
+      classes: "focus",
+      data: {
+        id,
+        kind: "wallet",
+        side,
+        slot: sideSlots[side]++,
+        color,
+        detail: `${side === "input" ? "Input" : "Output"} wallet ${wallet.address} · ${wallet.cluster_id ? `cluster ${wallet.cluster_id}` : "unclustered"}`,
+      },
+    });
+    elements.push({
+      classes: "focus",
+      data: {
+        id: `focus:wallet-edge:${index}`,
+        kind: "focus-wallet",
+        color,
+        source: side === "input" ? id : transactionId,
+        target: side === "input" ? transactionId : id,
+      },
+    });
+  });
+  [...data.endpointOverflow, ...data.walletOverflow].forEach(
+    (summary, index) => {
+      const side = summary.key?.startsWith("input") ? "input" : "output",
+        id = `focus:summary:${index}`;
+      elements.push({
+        classes: "focus",
+        data: {
+          id,
+          kind: `${summary.kind}-summary`,
+          side,
+          slot: sideSlots[side]++,
+          label: `+${summary.count} ${summary.kind === "wallet" ? "wallets" : "IPs"}`,
+          detail: `${summary.count} additional ${summary.kind === "wallet" ? "wallet" : "IP endpoint"} records collapsed for responsive rendering`,
+        },
+      });
+      elements.push({
+        classes: "focus",
+        data: {
+          id: `focus:summary-edge:${index}`,
+          kind: summary.kind === "wallet" ? "focus-wallet" : "focus-network",
+          color: "#94a3b8",
+          source: side === "input" ? id : transactionId,
+          target: side === "input" ? transactionId : id,
+        },
+      });
+    },
+  );
+  graph.add(elements.slice(0, 1 + data.limits.edges * 2));
+  positionMapGraph();
+  focusMapViewport(true);
+  const status = document.getElementById("map-selection"),
+    clear = document.querySelector("[data-map-clear]");
+  if (clear) clear.hidden = false;
+  if (status)
+    status.textContent = `${data.transaction.priority || "Flagged"} lead selected · map focused on its path · ${num(data.totals.endpoints)} unique IP endpoints · ${num(data.totals.wallets)} wallets${data.totals.countryConflicts ? ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches` : ""}${data.totals.endpoints > data.totals.renderedEndpoints || data.totals.wallets > data.totals.renderedWallets ? " · overflow collapsed into count nodes" : ""}`;
+}
+async function selectMapLead(txid) {
+  if (!txid || !state.mapGraph) return;
+  state.selectedLead = txid;
+  document
+    .querySelectorAll(".map-lead-card")
+    .forEach((card) => {
+      const selected = card.dataset.mapLead === txid;
+      card.classList.toggle("selected", selected);
+      card.setAttribute("aria-selected", String(selected));
+    });
+  const status = document.getElementById("map-selection");
+  if (status) status.textContent = "Loading selected lead path…";
+  try {
+    const data = await api.mapLead({ txid });
+    if (state.selectedLead !== txid) return;
+    renderLeadFocus(data);
+    api
+      .auditEvent({ action: "map.lead_selected", details: { txid } })
+      .catch(() => {});
+  } catch (error) {
+    fail(error);
+  }
+}
+async function loadMapOverview() {
+  const caption = document.getElementById("map-caption"),
+    stats = document.getElementById("map-stats"),
+    empty = document.getElementById("map-empty"),
+    attribution = document.getElementById("map-attribution");
+  try {
+    const data = await api.mapOverview();
+    if (attribution)
+      attribution.textContent = `${data.geo.edition} ${data.geo.release} · ${data.geo.attribution} · approximate, reduced accuracy`;
+    if (!data.totals.observations) {
+      empty.hidden = false;
+      empty.innerHTML = "<strong>No map evidence yet</strong><span>Import evidence and run analysis to build the transaction map.</span>";
+      caption.textContent = "No imported observations.";
+      return;
+    }
+    stats.innerHTML = `<span><strong>${num(data.totals.observations)}</strong> observations</span><span><strong>${num(data.totals.transactions)}</strong> transactions</span><span><strong>${num(data.totals.uniqueIps)}</strong> unique IPs</span><span><strong>${num(data.totals.clusters)}</strong> clusters</span>`;
+    const aggregation = data.aggregation.combinedByCityPair
+      ? ` · ${num(data.totals.routeGroups)} route/cluster groups consolidated into ${num(data.totals.renderedRoutes)} city routes`
+      : ` · ${num(data.totals.renderedRoutes)} city/cluster routes`;
+    caption.textContent = `Full case context${aggregation}${data.aggregation.suppressed ? ` · ${num(data.aggregation.suppressed.observationCount)} low-volume observations remain in totals` : ""}`;
+    if (data.totals.countryConflicts)
+      caption.textContent += ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches disclosed`;
+    if (!data.geo.available)
+      caption.textContent += " · City database unavailable; supplied-country fallbacks are active";
+    renderMapOverview(data);
+  } catch (error) {
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = `Unable to build map: ${error.message}`;
+    }
+  }
 }
 function destroyClusterGraph() {
   state.clusterGraph?.destroy();
@@ -576,7 +1237,8 @@ function clusterLayout(name) {
 }
 function renderClusterGraph(d) {
   const container = document.getElementById("cluster-graph"),
-    status = document.getElementById("cluster-graph-selection");
+    status = document.getElementById("cluster-graph-selection"),
+    graphColor = clusterColor(d.cluster.id);
   if (!container || !d.graph?.links.length) return;
   if (typeof window.cytoscape !== "function") {
     status.textContent =
@@ -648,10 +1310,10 @@ function renderClusterGraph(d) {
           width: "label",
           height: 24,
           padding: 9,
-          color: "#715334",
-          "background-color": "#fff7ed",
+          color: "#071a33",
+          "background-color": graphColor,
           "border-width": 1.5,
-          "border-color": "#e88435",
+          "border-color": "#ffffff",
         },
       },
       {
@@ -674,7 +1336,7 @@ function renderClusterGraph(d) {
         selector: "edge",
         style: {
           width: 1.2,
-          "line-color": "#cbd5e1",
+          "line-color": graphColor,
           "curve-style": "bezier",
           opacity: 0.72,
         },
@@ -684,13 +1346,13 @@ function renderClusterGraph(d) {
         style: {
           color: "#ffffff",
           "border-width": 4,
-          "border-color": "#5b7bae",
-          "background-color": "#5b7bae",
+          "border-color": graphColor,
+          "background-color": graphColor,
         },
       },
       {
         selector: "edge:selected",
-        style: { width: 2.5, "line-color": "#5b7bae", opacity: 1 },
+        style: { width: 2.5, "line-color": graphColor, opacity: 1 },
       },
     ],
   });
@@ -834,7 +1496,9 @@ function configureAuth(configured) {
 async function enterWorkspace(account) {
   state.username = account.username;
   document.getElementById("session-user").textContent = account.username;
-  if (window.anime?.animate && !reducedMotion)
+  stopLoadingAnimation();
+  loadingScreen.hidden = true;
+  if (!authScreen.hidden && window.anime?.animate && !reducedMotion)
     await new Promise((resolve) =>
       window.anime.animate(authScreen, {
         opacity: [1, 0],
@@ -868,7 +1532,9 @@ async function bootstrap() {
   try {
     const status = await api.authStatus();
     await minimum;
-    await showAuthentication(status.configured);
+    if (status.authenticated)
+      await enterWorkspace({ username: status.username || "ui-test" });
+    else await showAuthentication(status.configured);
   } catch (error) {
     document.getElementById("loading-message").textContent =
       `Unable to open local workspace: ${error.message}`;
@@ -879,22 +1545,39 @@ main.addEventListener("click", (e) => {
   const route = e.target.closest("[data-route]")?.dataset.route,
     a = e.target.closest("[data-action]")?.dataset.action,
     tx = e.target.closest("[data-tx]")?.dataset.tx,
+    mapLead = e.target.closest("[data-map-lead]")?.dataset.mapLead,
     c = e.target.closest("[data-cluster]")?.dataset.cluster,
     errors = e.target.closest("[data-errors]"),
     remove = e.target.closest("[data-delete-import]"),
-    p = e.target.closest("[data-page]");
+    p = e.target.closest("[data-page]"),
+    resetCluster = e.target.closest("[data-reset-cluster]")?.dataset
+      .resetCluster;
   if (route) navigate(route);
   else if (a) action(a);
   else if (tx) openTx(tx);
+  else if (mapLead) selectMapLead(mapLead);
   else if (c) openCluster(c);
   else if (errors) openErrors(errors.dataset.errors, errors.dataset.name);
   else if (remove) removeImport(remove.dataset.deleteImport);
+  else if (e.target.closest("[data-map-clear]")) clearMapFocus();
+  else if (resetCluster) {
+    resetClusterColor(resetCluster);
+    refreshSettingsClusters();
+  } else if (e.target.closest("[data-reset-all-clusters]")) {
+    localStorage.removeItem(colorStorageKey());
+    refreshSettingsClusters();
+    toast("Cluster colors reset to defaults.");
+  }
   else if (p) {
     const pageType = p.dataset.pageType,
       pageLimit = Number(p.dataset.pageLimit) || state.limit;
     state.offset = Number(p.dataset.page);
     pageType === "clusters"
       ? refreshClusters()
+      : pageType === "leads-map"
+        ? refreshMapLeadList(pageLimit)
+        : pageType === "settings-clusters"
+          ? refreshSettingsClusters(state.offset)
       : pageType === "audit"
         ? activity()
         : refreshList(pageType, pageLimit);
@@ -909,21 +1592,52 @@ main.addEventListener("input", (e) => {
       () =>
         state.route === "clusters"
           ? refreshClusters()
+          : state.route === "leads"
+            ? refreshMapLeadList()
           : refreshList(state.route),
       250,
     );
   }
+  if (e.target.id === "cluster-settings-search") {
+    state.settingsSearch = e.target.value;
+    state.offset = 0;
+    clearTimeout(state.settingsTimer);
+    state.settingsTimer = setTimeout(() => refreshSettingsClusters(), 250);
+  }
 });
 main.addEventListener("change", (e) => {
+  if (e.target.matches("[data-cluster-color]")) {
+    const clusterId = e.target.dataset.clusterColor;
+    saveClusterColor(clusterId, e.target.value);
+    const row = e.target.closest("[data-cluster-setting]");
+    row?.querySelector(".cluster-setting-swatch")?.style.setProperty(
+      "--cluster-color",
+      e.target.value,
+    );
+    const reset = row?.querySelector("[data-reset-cluster]");
+    if (reset) reset.disabled = false;
+    return;
+  }
   if (e.target.id === "priority-filter") {
     state.priority = e.target.value;
     state.offset = 0;
-    refreshList("leads");
+    state.route === "leads" ? refreshMapLeadList() : refreshList("leads");
   }
   if (e.target.id === "status-filter") {
     state.status = e.target.value;
     state.offset = 0;
-    refreshList("leads");
+    state.route === "leads" ? refreshMapLeadList() : refreshList("leads");
+  }
+});
+main.addEventListener("keydown", (event) => {
+  const card = event.target.closest("[data-map-lead]");
+  if (
+    card &&
+    !event.target.closest("[data-tx]") &&
+    ["Enter", " "].includes(event.key)
+  ) {
+    event.preventDefault();
+    selectMapLead(card.dataset.mapLead);
   }
 });
 navigation.addEventListener("click", (e) => {

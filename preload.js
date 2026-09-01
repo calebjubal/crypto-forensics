@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("forensics", {
   page: invoke("page"),
   detail: invoke("detail"),
   cluster: invoke("cluster"),
+  mapOverview: invoke("map-overview"),
+  mapLead: invoke("map-lead"),
   review: invoke("review"),
   errors: invoke("errors"),
   model: invoke("model"),
