@@ -9,6 +9,11 @@ The project follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - GitHub Actions workflow that validates a matching draft release and publishes Windows and Linux electron-builder artifacts whenever `dev` is updated.
+- Offline transaction world map with a bundled Natural Earth outline, DB-IP City Lite IPv4/IPv6 lookup, aggregated dotted city routes, and bold lead-focused IP/transaction/wallet paths.
+- Reduced-motion-aware animated map zoom that centers and fits the focused path whenever an investigator selects a lead.
+- Searchable per-investigator cluster color settings with deterministic defaults, individual reset, and reset-all controls shared by map and entity graphs.
+- Bounded overview and focus projections that retain full counts and disclose consolidated route groups or labelled overflow nodes.
+- Map aggregation, geolocation fallback, missing/corrupt database, and graph-budget regression coverage.
 
 ### Changed
 
@@ -16,12 +21,14 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Moved hardened Electron fuse configuration into electron-builder's native cross-platform integration.
 - Updated GitHub Actions dependencies to Node.js 24-compatible releases.
 - Removed macOS packaging from the current release scope.
+- Expanded methodology, offline-assurance, licensing, and operational-limit documentation for approximate geolocation and map interpretation.
 
 ### Fixed
 
 - Prevented parallel electron-builder publishers from creating duplicate drafts by separating artifact builds from one serialized GitHub release upload.
 - Draft validation now enumerates unpublished releases instead of relying on the tag endpoint, which can return `404` before the draft's Git tag is published.
 - Release publication now refuses drafts targeting another branch and tags pointing to a different source commit.
+- Development authenticated startup no longer waits on or leaves visible a hidden sign-in/loading animation.
 
 ## [1.0.3] - 2026-08-29
 

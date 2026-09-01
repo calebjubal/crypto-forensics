@@ -17,7 +17,10 @@ const {
 } = require("./database");
 const { analyze } = require("./analytics");
 const { exportReport } = require("./export");
+const { createGeoLocator } = require("./geolocation");
+const { mapOverview, mapLead } = require("./map");
 const db = openDatabase(workerData.database);
+const geoLocator = createGeoLocator(workerData.geoip);
 const cancellation = new Int32Array(workerData.cancellation);
 const cancelled = () => Atomics.load(cancellation, 0) === 1;
 let busy = false;
@@ -68,6 +71,12 @@ parentPort.on("message", async ({ id, action, payload = {}, context = {} }) => {
         break;
       case "cluster":
         result = clusterDetail(db, payload.id);
+        break;
+      case "map-overview":
+        result = mapOverview(db, geoLocator);
+        break;
+      case "map-lead":
+        result = mapLead(db, payload.txid, geoLocator);
         break;
       case "review":
         result = review(db, payload, context);

@@ -21,6 +21,19 @@ const { analyze } = require("../src/analytics");
 const { makeRows, serialize } = require("../test-support/fixtures");
 const { normalize, satoshis } = require("../src/validation");
 const { csvCell } = require("../src/export");
+const {
+  mapOverview,
+  mapLead,
+  combineRoutes,
+  OVERVIEW_ROUTE_LIMIT,
+  FOCUS_WALLET_LIMIT,
+} = require("../src/map");
+const {
+  createGeoLocator,
+  responseLocation,
+  countryFallback,
+  annotateLocation,
+} = require("../src/geolocation");
 const temporary = () =>
   fs.mkdtempSync(path.join(os.tmpdir(), "satoshi-trace-test-"));
 
@@ -215,6 +228,151 @@ test("correlates, trains, clusters and emits explainable leads", async () => {
   });
   assert.equal(detail(db, leads.rows[0].txid).review.status, "In review");
   db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test("aggregates every observation for the map and expands a selected lead", async () => {
+  const dir = temporary(),
+    file = path.join(dir, "map.json"),
+    db = openDatabase(":memory:"),
+    locator = {
+      metadata: { available: true, edition: "Test City DB" },
+      locate(ip, suppliedCountry) {
+        const source = ip.startsWith("192.") || ip.startsWith("203.");
+        return {
+          key: source ? `city:${suppliedCountry}:source` : "city:ZZ:destination",
+          country: source ? suppliedCountry : "ZZ",
+          countryName: source ? suppliedCountry : "Test destination",
+          region: "Test region",
+          city: source ? "Source city" : "Destination city",
+          latitude: source ? 20 : -20,
+          longitude: source ? 40 : -40,
+          source: "test",
+        };
+      },
+    };
+  fs.writeFileSync(file, serialize(makeRows(80), "json"));
+  await importFile(db, file);
+  analyze(db);
+  const overview = mapOverview(db, locator),
+    summaryData = summary(db),
+    lead = page(db, "leads", { limit: 1 }).rows[0],
+    focus = mapLead(db, lead.txid, locator);
+  assert.equal(overview.totals.observations, summaryData.observations);
+  assert.equal(overview.totals.transactions, summaryData.transactions);
+  assert.equal(
+    overview.routes.reduce((sum, route) => sum + route.observationCount, 0),
+    summaryData.observations,
+  );
+  assert.ok(overview.routes.some((route) => route.clusterId));
+  assert.ok(focus.endpoints.length > 0);
+  assert.ok(focus.wallets.length > 0);
+  assert.equal(focus.transaction.txid, lead.txid);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test("consolidates oversized route groups without losing observation totals", () => {
+  const routes = Array.from({ length: OVERVIEW_ROUTE_LIMIT + 25 }, (_, index) => ({
+    id: `route:${index}`,
+    source: "city:a",
+    target: "city:b",
+    clusterId: `cluster:${index}`,
+    observationCount: index + 1,
+    transactions: new Set([`tx:${index}`]),
+    ips: new Set([`ip:${index}`]),
+    leads: new Set(index % 2 ? [] : [`tx:${index}`]),
+  }));
+  const expected = routes.reduce(
+      (sum, route) => sum + route.observationCount,
+      0,
+    ),
+    result = combineRoutes(routes);
+  assert.equal(result.combined, true);
+  assert.equal(result.routes.length, 1);
+  assert.equal(result.routes[0].observationCount, expected);
+  assert.equal(result.routes[0].transactions.size, routes.length);
+});
+test("collapses selected-lead wallet overflow into disclosed groups", async () => {
+  const dir = temporary(),
+    file = path.join(dir, "wallet-overflow.json"),
+    db = openDatabase(":memory:"),
+    row = makeRows(1)[0],
+    count = FOCUS_WALLET_LIMIT + 20;
+  row.input_addresses = Array.from(
+    { length: count },
+    (_, index) => `overflow_input_${String(index).padStart(5, "0")}`,
+  );
+  row.output_addresses = Array.from(
+    { length: count },
+    (_, index) => `overflow_output_${String(index).padStart(5, "0")}`,
+  );
+  row.input_amounts = Array.from({ length: count }, () => "0.01000000");
+  row.output_amounts = Array.from({ length: count }, () => "0.00900000");
+  fs.writeFileSync(file, JSON.stringify([row]));
+  await importFile(db, file);
+  const focus = mapLead(db, row.txid, {
+    metadata: { available: false },
+    locate: () => ({
+      key: "unlocated",
+      country: "",
+      countryName: "Unlocated",
+      region: "",
+      city: "",
+      latitude: null,
+      longitude: null,
+      source: "unlocated",
+    }),
+  });
+  assert.equal(focus.wallets.length, FOCUS_WALLET_LIMIT);
+  assert.equal(focus.totals.wallets, count * 2);
+  assert.equal(
+    focus.walletOverflow.reduce((sum, group) => sum + group.count, 0),
+    count * 2 - FOCUS_WALLET_LIMIT,
+  );
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test("handles City Lite responses and safe country fallbacks", () => {
+  const city = responseLocation({
+    country: { iso_code: "IN", names: { en: "India" } },
+    subdivisions: [{ names: { en: "Delhi" } }],
+    city: { names: { en: "New Delhi" } },
+    location: { latitude: 28.6327, longitude: 77.2198 },
+  });
+  assert.equal(city.country, "IN");
+  assert.equal(city.city, "New Delhi");
+  assert.equal(city.latitude, 28.6327);
+  assert.equal(countryFallback("SG").countryName, "Singapore");
+  assert.equal(countryFallback("invalid"), null);
+  const conflict = annotateLocation(city, "US");
+  assert.equal(conflict.countryConflict, true);
+  assert.equal(conflict.suppliedCountry, "US");
+  const dir = temporary(),
+    missing = createGeoLocator(path.join(dir, "missing.mmdb")),
+    corruptPath = path.join(dir, "corrupt.mmdb");
+  assert.equal(missing.metadata.available, false);
+  assert.equal(missing.locate("192.0.2.1", "SG").source, "supplied-country");
+  assert.equal(missing.locate("192.0.2.1", null).source, "unlocated");
+  fs.writeFileSync(corruptPath, "not a maxmind database");
+  const corrupt = createGeoLocator(corruptPath);
+  assert.equal(corrupt.metadata.available, false);
+  assert.equal(corrupt.locate("10.0.0.1", "IN").source, "supplied-country");
+  const bundled = createGeoLocator(
+    path.join(
+      __dirname,
+      "..",
+      "assets",
+      "geoip",
+      "dbip-city-lite-2026-09.mmdb",
+    ),
+  );
+  assert.equal(bundled.metadata.available, true);
+  assert.equal(bundled.locate("8.8.8.8", "IN").source, "db-ip-city-lite");
+  assert.equal(bundled.locate("8.8.8.8", "IN").countryConflict, true);
+  assert.equal(
+    bundled.locate("2401:4900:8840:eaf1:dd4e:39f5:5d14:39f", null)
+      .country,
+    "IN",
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });
 test("neutralizes CSV formula cells", () => {

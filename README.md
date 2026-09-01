@@ -11,10 +11,10 @@
   </p>
 
   <p>
-    <a href="https://github.com/calebjubal/crypto-forensics/releases/tag/v1.0.3"><img alt="Version 1.0.3" src="https://img.shields.io/badge/version-v1.0.3-E88435?style=for-the-badge"></a>
+    <img alt="Version 1.0.4" src="https://img.shields.io/badge/version-v1.0.4-E88435?style=for-the-badge">
     <a href="https://github.com/calebjubal/crypto-forensics/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/calebjubal/crypto-forensics?style=for-the-badge&color=17243A"></a>
     <img alt="Offline first" src="https://img.shields.io/badge/runtime-100%25_offline-248675?style=for-the-badge">
-    <img alt="Tests passing" src="https://img.shields.io/badge/tests-11_passing-248675?style=for-the-badge">
+    <img alt="Tests passing" src="https://img.shields.io/badge/tests-15_passing-248675?style=for-the-badge">
   </p>
 
   <p>
@@ -48,13 +48,15 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 
 ## Highlights
 
-- **Completely offline deployment** — no HTTP server, localhost port, remote model, CDN, telemetry, updater, map, font, ASN lookup, or runtime download.
+- **Completely offline deployment** — no HTTP server, localhost port, remote model, CDN, telemetry, updater, online tiles, font, ASN lookup, or runtime download.
 - **Bulk evidence ingestion** — select multiple files together, add more later, review rejected rows, and safely remove individual sources.
 - **Three evidence formats** — CSV, JSON, and XML are parsed as streams instead of loading entire source files into memory.
 - **Cross-layer correlation** — joins IP, port, time, geography, and ASN observations to Bitcoin TXIDs, addresses, and amounts.
 - **Local AI/ML analysis** — a bundled Isolation Forest measures relative unusualness without contacting an external service.
 - **Conservative entity clustering** — common-input ownership hypotheses exclude possible collaborative transactions.
 - **Interactive entity graphs** — bundled Cytoscape views map address participation to related transactions with ring and flow layouts.
+- **Transaction world map** — a bundled Natural Earth outline and DB-IP City Lite database show full-case city routes, then reveal a selected lead's IP, transaction, and wallet path.
+- **Custom cluster colors** — stable contrast-safe defaults and per-investigator overrides apply across the world map and entity graphs.
 - **Explainable lead triage** — Critical, High, Medium, and Low priorities include the measured reasons behind each score.
 - **Evidence provenance** — every source records its SHA-256 digest, byte size, ingestion time, and row outcomes.
 - **Local authentication and audit trail** — salted scrypt password hashes protect entry, while operations are recorded in the case database.
@@ -103,7 +105,7 @@ flowchart LR
 2. **Import** one or many evidence files from local storage.
 3. **Review provenance** and rejected-row explanations in the source ledger.
 4. **Run analysis** to rebuild anomaly scores, entity clusters, and leads.
-5. **Investigate** transactions, correlated observations, feature evidence, and clustering hypotheses.
+5. **Investigate** transactions, correlated observations, feature evidence, clustering hypotheses, and the full-case transaction map. Selecting a lead adds its bold IP/transaction/wallet path without filtering away the case overview.
 6. **Record disposition** and case notes for each lead.
 7. **Export** selected investigative results to a local JSON or CSV report.
 
@@ -178,6 +180,10 @@ Entity clusters use the common-input heuristic as a conservative ownership hypot
 
 Opening a cluster renders an interactive address-to-transaction evidence graph. Investigators can switch between concentric rings and a transaction-first flow, fit the graph to the viewport, select nodes for context, and open a transaction from the graph. Address and transaction evidence lists remain available below the visualization, while large clusters use disclosed node and edge caps to keep interaction responsive.
 
+The Priority Leads page aggregates every imported observation into dotted source-city-to-destination-city routes, grouped by the transaction's common-input cluster. It retains observation, transaction, unique-IP, flagged-lead, and cluster totals even when several observations share one rendered edge. Above 2,000 route/cluster groups, low-volume groups are consolidated by city pair with totals and cluster breakdowns retained. Selecting a lead adds a solid, bold overlay for its unique source and destination IPs, transaction, and input/output wallets. Focus views disclose overflow above 120 endpoints, 120 wallets, or 800 edges with labelled count nodes.
+
+IPv4 and IPv6 locations are inferred locally from the bundled DB-IP City Lite September 2026 database. These city and coordinate results are approximate visualization metadata and are never written into evidentiary tables. Private, reserved, documentation, and unmatched addresses use supplied `geo_country` only as a labelled country-centroid fallback; otherwise they remain unlocated. Derived and supplied country disagreements are preserved as metadata rather than silently reconciled. City Lite does not provide or infer ISP, domain, connection type, postal code, or an accuracy radius.
+
 ## Evidence and file management
 
 - Import multiple supported files in a single selection.
@@ -198,7 +204,7 @@ The packaged application loads bundled `file://` assets directly and does not cr
 - Electron context isolation is enabled and the renderer receives a narrow IPC bridge.
 - Electron fuses disable `RunAsNode`, Node CLI inspection, and `NODE_OPTIONS`, while enforcing ASAR integrity and ASAR-only loading.
 - Evidence parsing and analysis run in a local worker thread.
-- SQLite, parsers, ML code, Cytoscape, CSS, and icons are bundled; the interface uses local system fonts and never downloads a web font.
+- SQLite, parsers, ML code, Cytoscape, CSS, the Natural Earth outline, DB-IP City Lite, and icons are bundled; the interface uses local system fonts and never downloads a web font.
 - UNC and network-share evidence paths are rejected.
 - Passwords are stored only as salted scrypt hashes.
 - The audit log records application lifecycle, authentication, navigation, imports, removal, analysis, review, export, cancellation, and failures.
@@ -214,6 +220,8 @@ For defense in depth, deploy on a disconnected workstation and enforce the organ
 | Local storage      | Embedded SQLite with WAL and `synchronous=FULL`           |
 | Ingestion          | Streaming CSV, JSON, and SAX-style XML parsers            |
 | Analytics          | Explainable rules and bundled JavaScript Isolation Forest |
+| Geolocation        | Bundled DB-IP City Lite MMDB; session-only IP cache        |
+| Map                | Natural Earth 1:110m outline with Cytoscape overlays       |
 | Internal transport | Electron IPC and worker messages only                     |
 | Packaging          | Electron Builder with ASAR and hardened Electron fuses    |
 
@@ -276,10 +284,12 @@ Production installers should be signed with the platform owner’s trusted code-
 ## Project structure
 
 ```text
-assets/                 Compiled CSS and application icons
+assets/                 Compiled CSS, icons, world outline, and GeoIP data
 src/analytics.js        Feature extraction, scoring, and clustering
 src/database.js         SQLite schema, provenance, queries, and authentication
 src/isolation-forest.js Bundled anomaly model
+src/geolocation.js      Offline City Lite lookup and country fallback
+src/map.js              Bounded overview and focused map projections
 src/offline.js          Runtime network-denial boundary
 src/parsers.js          Streaming CSV, JSON, and XML ingestion
 src/validation.js       Evidence schema and exact amount validation
@@ -294,8 +304,9 @@ styles.input.css        Tailwind and daisyUI theme source
 
 ## Operational limitations
 
-- Country and ASN values are accepted as supplied metadata and are not independently verified.
+- Supplied country and ASN values are not independently verified; City Lite locations are approximate and may be wrong or stale.
 - NAT, relays, VPNs, shared infrastructure, incomplete collection, and clock differences can weaken network-layer attribution.
+- A location/IP route never proves wallet ownership, identity, control, or physical presence.
 - Batching, consolidation, large transfers, fees, and collaborative transactions can have legitimate explanations.
 - Common-input clustering can produce false associations and must be treated as a hypothesis.
 - Deleting or losing the local case database removes its accounts, evidence, reviews, and audit history.
@@ -313,7 +324,7 @@ Security-sensitive findings should not include real evidence in public issues. S
 
 ## License
 
-The package metadata declares this project under the ISC license. See [`package.json`](package.json) for the current project metadata.
+The package metadata declares this project under the ISC license. See [`package.json`](package.json) for the current project metadata and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for bundled DB-IP City Lite attribution, Natural Earth terms, and dependency notices.
 
 ---
 

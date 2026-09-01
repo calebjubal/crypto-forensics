@@ -1,0 +1,10 @@
+{
+  "provider": "DB-IP",
+  "edition": "DB-IP City Lite",
+  "release": "2026-09",
+  "license": "CC BY 4.0",
+  "attribution": "IP Geolocation by DB-IP",
+  "url": "https://db-ip.com",
+  "accuracy": "Reduced-accuracy approximate city geolocation",
+  "sha256": "05a10861259c7966cb54d7181ef8c360de8c8829d182098c0e62a9b7d54cd50d"
+}

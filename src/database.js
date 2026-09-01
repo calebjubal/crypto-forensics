@@ -460,9 +460,9 @@ function page(db, type, options = {}) {
   }
   if (type === "clusters") {
     const filter = search
-      ? " AND EXISTS(SELECT 1 FROM cluster_members m WHERE m.cluster_id=c.id AND m.address LIKE ?)"
+      ? " AND (c.id LIKE ? OR EXISTS(SELECT 1 FROM cluster_members m WHERE m.cluster_id=c.id AND m.address LIKE ?))"
       : "";
-    if (search) params.push(`%${search}%`);
+    if (search) params.push(`%${search}%`, `%${search}%`);
     return {
       rows: db
         .prepare(

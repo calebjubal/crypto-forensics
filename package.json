@@ -54,6 +54,7 @@
     "files": [
       "**/*",
       "!{.git,.github,.vscode,build,dist,out,release,test,test-support}/**",
+      "!test-output/**",
       "!{README.md,CHANGELOG.md,RELEASE_NOTES_v*.md,styles.css,styles.input.css}"
     ],
     "publish": [
@@ -97,6 +98,7 @@
     "animejs": "^4.1.3",
     "csv-parse": "6.1.0",
     "cytoscape": "^3.34.2",
+    "maxmind": "5.0.7",
     "saxes": "6.0.0",
     "stream-chain": "2.2.5",
     "stream-json": "1.9.1"

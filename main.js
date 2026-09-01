@@ -121,6 +121,12 @@ app
     worker = new Worker(path.join(__dirname, "src", "worker.js"), {
       workerData: {
         database: path.join(app.getPath("userData"), "evidence", "case.sqlite"),
+        geoip: path.join(
+          __dirname,
+          "assets",
+          "geoip",
+          "dbip-city-lite-2026-09.mmdb",
+        ),
         cancellation,
       },
     });
@@ -201,6 +207,8 @@ app
     handle("page", (payload) => request("page", payload));
     handle("detail", (payload) => request("detail", payload));
     handle("cluster", (payload) => request("cluster", payload));
+    handle("map-overview", () => request("map-overview"));
+    handle("map-lead", (payload) => request("map-lead", payload));
     handle("review", (payload) => request("review", payload));
     handle("errors", (payload) => request("errors", payload));
     handle("model", () => request("model"));
@@ -302,6 +310,7 @@ app
       transport: "Electron IPC / worker MessagePort",
       network: "Blocked",
       ports: 0,
+      geoip: "DB-IP City Lite · September 2026 · bundled offline",
     }));
     handle("audit-event", (payload) =>
       request("audit", {
