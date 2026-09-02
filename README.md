@@ -53,7 +53,7 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 - **Three evidence formats** — CSV, JSON, and XML are parsed as streams instead of loading entire source files into memory.
 - **Cross-layer correlation** — joins IP, port, time, geography, and ASN observations to Bitcoin TXIDs, addresses, and amounts.
 - **Local AI/ML analysis** — a bundled Isolation Forest measures relative unusualness without contacting an external service.
-- **Conservative entity clustering** — common-input ownership hypotheses exclude possible collaborative transactions.
+- **Conservative entity clustering** — common-input ownership is supplemented by deterministic transaction-graph embeddings with repeated-context, similarity, and size safeguards.
 - **Interactive entity graphs** — bundled Cytoscape views map address participation to related transactions with ring and flow layouts.
 - **Transaction world map** — a bundled Natural Earth outline and DB-IP City Lite database show full-case city routes, then reveal a selected lead's IP, transaction, and wallet path.
 - **Custom cluster colors** — stable contrast-safe defaults and per-investigator overrides apply across the world map and entity graphs.
@@ -176,7 +176,7 @@ Priority thresholds:
 
 The Isolation Forest score expresses relative unusualness within the imported dataset; it is not a probability of criminal activity. Rule explanations identify the observations contributing to triage, while the transaction view retains the underlying network records and source provenance for review.
 
-Entity clusters use the common-input heuristic as a conservative ownership hypothesis. Possible collaborative transactions are excluded from clustering, and IP addresses are never treated as proof of wallet ownership.
+Entity clusters begin with the common-input heuristic as a conservative ownership hypothesis, excluding possible collaborative transactions. The offline analytics worker then creates deterministic 32-dimensional embeddings of each wallet's input/output transaction neighborhood. Separate common-input components are linked only when both later appear as inputs, share at least two non-collaborative output contexts, reach cosine similarity of at least 0.82, and remain within a 100-wallet cap. A generic structural resemblance, a single co-occurrence, IP data, geography, ASN metadata, and guessed change addresses cannot merge wallets. These safeguards reduce—not eliminate—false associations.
 
 Opening a cluster renders an interactive address-to-transaction evidence graph. Investigators can switch between concentric rings and a transaction-first flow, fit the graph to the viewport, select nodes for context, and open a transaction from the graph. Address and transaction evidence lists remain available below the visualization, while large clusters use disclosed node and edge caps to keep interaction responsive.
 
@@ -308,7 +308,7 @@ styles.input.css        Tailwind and daisyUI theme source
 - NAT, relays, VPNs, shared infrastructure, incomplete collection, and clock differences can weaken network-layer attribution.
 - A location/IP route never proves wallet ownership, identity, control, or physical presence.
 - Batching, consolidation, large transfers, fees, and collaborative transactions can have legitimate explanations.
-- Common-input clustering can produce false associations and must be treated as a hypothesis.
+- Common-input and graph-embedding clustering can produce false associations and must be treated as a hypothesis.
 - Deleting or losing the local case database removes its accounts, evidence, reviews, and audit history.
 - There is intentionally no cloud backup, synchronization, telemetry, or password-recovery service.
 

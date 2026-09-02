@@ -11,10 +11,11 @@ Satoshi Trace v1.0.4 adds an entirely offline transaction world map to the Prior
 - **Offline City Lite geolocation** — the packaged DB-IP City Lite September 2026 database resolves IPv4 and IPv6 without runtime network access or writes to evidentiary tables.
 - **Disclosed fallbacks and limits** — supplied country metadata is used only as a labelled centroid fallback, unlocated endpoints remain visible in totals, and graph overflow is represented by count nodes.
 - **Cluster color settings** — deterministic contrast-safe colors can be searched, customized, reset individually, or reset together and persist for the local investigator account.
+- **Graph-assisted entity hypotheses** — common-input components can be linked through deterministic 32-dimensional transaction-neighborhood embeddings only after repeated shared contexts, high cosine similarity, input-side evidence, collaborative-pattern exclusion, and a strict size cap.
 
 ## Interpretation warning
 
-DB-IP City Lite locations are approximate visualization metadata. IP association and map position do not establish physical presence, identity, wallet ownership, or control. The application does not infer ISP, domain, connection type, postal code, or accuracy radius.
+DB-IP City Lite locations are approximate visualization metadata. IP association and map position do not establish physical presence, identity, wallet ownership, or control. Common-input and embedding-assisted groups are also hypotheses that can produce false associations. The application does not infer ISP, domain, connection type, postal code, or accuracy radius.
 
 ## Offline guarantee
 
@@ -22,7 +23,7 @@ The Natural Earth outline, DB-IP MMDB, country fallback data, Cytoscape runtime,
 
 ## Verification
 
-- 15 automated system and regression tests pass.
+- 16 automated system and regression tests pass.
 - The Electron workflow was visually checked with 240 synthetic transactions and 320 observations.
 - Leads list filters leave full-case map totals unchanged; selecting a lead creates one focused overlay.
 - The package archive includes the pinned City Lite MMDB, metadata/checksum, Natural Earth SVG, and country-centroid data.

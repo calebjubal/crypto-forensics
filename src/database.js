@@ -56,10 +56,15 @@ function openDatabase(file) {
     CREATE TABLE IF NOT EXISTS clusters(id TEXT PRIMARY KEY, size INTEGER NOT NULL, tx_count INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS cluster_members(address TEXT PRIMARY KEY, cluster_id TEXT NOT NULL REFERENCES clusters(id));
     CREATE INDEX IF NOT EXISTS members_cluster ON cluster_members(cluster_id);
+    CREATE TABLE IF NOT EXISTS cluster_embedding_links(cluster_id TEXT NOT NULL REFERENCES clusters(id),
+      left_address TEXT NOT NULL, right_address TEXT NOT NULL, similarity REAL NOT NULL,
+      shared_contexts INTEGER NOT NULL, PRIMARY KEY(cluster_id,left_address,right_address));
+    CREATE INDEX IF NOT EXISTS embedding_links_cluster ON cluster_embedding_links(cluster_id);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS audit_timestamp ON audit(timestamp DESC);
     CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY COLLATE NOCASE, salt TEXT NOT NULL,
-      password_hash TEXT NOT NULL, created TEXT NOT NULL, last_login TEXT);`);
+      password_hash TEXT NOT NULL, created TEXT NOT NULL, last_login TEXT);
+    UPDATE metadata SET value='2' WHERE key='schema_version' AND CAST(value AS INTEGER)<2;`);
   return db;
 }
 
@@ -335,6 +340,7 @@ function deleteImport(db, id, context = {}) {
       .prepare("SELECT count(*) AS count FROM orphan_transactions")
       .get().count;
     db.exec(`DELETE FROM lead_scores;
+      DELETE FROM cluster_embedding_links;
       DELETE FROM cluster_members;
       DELETE FROM clusters;
       DELETE FROM lead_reviews WHERE txid IN (SELECT txid FROM orphan_transactions);
@@ -542,7 +548,17 @@ function clusterDetail(db, id) {
       )
       .all(id),
     graphMembers = members.slice(0, 120).map((row) => row.address),
-    graphTransactions = transactions.slice(0, 80).map((row) => row.txid);
+    graphTransactions = transactions.slice(0, 80).map((row) => row.txid),
+    embeddingLinks = db
+      .prepare(
+        "SELECT left_address,right_address,similarity,shared_contexts FROM cluster_embedding_links WHERE cluster_id=? ORDER BY shared_contexts DESC,similarity DESC,left_address,right_address LIMIT 100",
+      )
+      .all(id),
+    embeddingLinkTotal = db
+      .prepare(
+        "SELECT count(*) AS n FROM cluster_embedding_links WHERE cluster_id=?",
+      )
+      .get(id).n;
   let links = [];
   if (graphMembers.length && graphTransactions.length) {
     const memberSlots = graphMembers.map(() => "?").join(","),
@@ -562,6 +578,8 @@ function clusterDetail(db, id) {
     cluster,
     members,
     transactions,
+    embeddingLinks,
+    embeddingLinkTotal,
     graph: {
       links,
       linkTotal,

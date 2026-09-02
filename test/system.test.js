@@ -230,6 +230,63 @@ test("correlates, trains, clusters and emits explainable leads", async () => {
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+test("graph embeddings join repeatedly co-occurring wallet hypotheses", async () => {
+  const dir = temporary(),
+    file = path.join(dir, "embedding.json"),
+    db = openDatabase(":memory:"),
+    rows = [...new Map(makeRows(7).map((row) => [row.txid, row])).values()],
+    shapes = [
+      { inputs: ["funding_alpha"], outputs: ["wallet_alpha", "wallet_beta"] },
+      { inputs: ["funding_beta"], outputs: ["wallet_alpha", "wallet_beta"] },
+      { inputs: ["wallet_alpha"], outputs: ["spend_alpha"] },
+      { inputs: ["wallet_beta"], outputs: ["spend_beta"] },
+      { inputs: ["funding_gamma"], outputs: ["wallet_gamma", "wallet_delta"] },
+      { inputs: ["wallet_gamma"], outputs: ["spend_gamma"] },
+      { inputs: ["wallet_delta"], outputs: ["spend_delta"] },
+    ];
+  rows.forEach((row, index) => {
+    row.input_addresses = shapes[index].inputs;
+    row.output_addresses = shapes[index].outputs;
+    row.input_amounts = shapes[index].inputs.map(() => "1.00000000");
+    row.output_amounts = shapes[index].outputs.map((_, outputIndex) =>
+      outputIndex ? "0.49000000" : "0.50000000",
+    );
+  });
+  fs.writeFileSync(file, serialize(rows, "json"));
+  await importFile(db, file);
+  assert.equal(
+    db.prepare("SELECT value FROM metadata WHERE key='schema_version'").get().value,
+    "2",
+  );
+  analyze(db);
+  analyze(db);
+  const memberships = db
+      .prepare(
+        "SELECT address,cluster_id FROM cluster_members WHERE address IN ('wallet_alpha','wallet_beta') ORDER BY address",
+      )
+      .all(),
+    config = JSON.parse(
+      db.prepare("SELECT config FROM analysis_runs ORDER BY created DESC LIMIT 1").get()
+        .config,
+    );
+  assert.equal(memberships.length, 2);
+  assert.equal(memberships[0].cluster_id, memberships[1].cluster_id);
+  const embeddingCluster = clusterDetail(db, memberships[0].cluster_id);
+  assert.equal(embeddingCluster.embeddingLinks.length, 1);
+  assert.equal(embeddingCluster.embeddingLinks[0].shared_contexts, 2);
+  assert.ok(embeddingCluster.embeddingLinks[0].similarity >= 0.82);
+  const oneOffMemberships = db
+    .prepare(
+      "SELECT address,cluster_id FROM cluster_members WHERE address IN ('wallet_gamma','wallet_delta') ORDER BY address",
+    )
+    .all();
+  assert.equal(oneOffMemberships.length, 2);
+  assert.notEqual(oneOffMemberships[0].cluster_id, oneOffMemberships[1].cluster_id);
+  assert.ok(config.graphEmbedding.candidatePairs >= 1);
+  assert.ok(config.graphEmbedding.acceptedLinks >= 1);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 test("aggregates every observation for the map and expands a selected lead", async () => {
   const dir = temporary(),
     file = path.join(dir, "map.json"),
