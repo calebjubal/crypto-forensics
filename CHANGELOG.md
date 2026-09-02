@@ -11,6 +11,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - GitHub Actions workflow that validates a matching draft release and publishes Windows and Linux electron-builder artifacts whenever `dev` is updated.
 - Offline transaction world map with a bundled Natural Earth outline, DB-IP City Lite IPv4/IPv6 lookup, aggregated dotted city routes, and bold lead-focused IP/transaction/wallet paths.
 - Reduced-motion-aware animated map zoom that centers and fits the focused path whenever an investigator selects a lead.
+- Toggleable lead isolation that hides full-case routes until the selected lead is clicked again, plus investigator-controlled drag, wheel/pinch, button zoom, and viewport reset.
 - Searchable per-investigator cluster color settings with deterministic defaults, individual reset, and reset-all controls shared by map and entity graphs.
 - Bounded overview and focus projections that retain full counts and disclose consolidated route groups or labelled overflow nodes.
 - Map aggregation, geolocation fallback, missing/corrupt database, and graph-budget regression coverage.

@@ -2003,8 +2003,51 @@ dialog::backdrop {
   background-position: center;
   background-repeat: no-repeat;
   background-size: 100% 100%;
-  transform-origin: 0 0;
-  will-change: transform;
+  cursor: grab;
+}
+.transaction-map:active {
+  cursor: grabbing;
+}
+.map-navigation {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid #42617f;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px #02081766;
+}
+.map-navigation button {
+  min-width: 52px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-right: 1px solid #42617f;
+  color: #e0f2fe;
+  background: #102b49ee;
+  font: inherit;
+  font-size: 0;
+  cursor: pointer;
+}
+.map-navigation button:last-child {
+  border-right: 0;
+  font-size: 8px;
+}
+.map-navigation button:first-child::before {
+  content: "Zoom +";
+  font-size: 8px;
+}
+.map-navigation button:nth-child(2)::before {
+  content: "Zoom −";
+  font-size: 8px;
+}
+.map-navigation button:hover,
+.map-navigation button:focus-visible {
+  color: #071a33;
+  background: #7dd3fc;
+  outline: none;
 }
 .map-empty {
   position: absolute;
