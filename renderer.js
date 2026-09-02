@@ -49,6 +49,7 @@ const state = {
   mapResizeObserver: null,
   mapViewAnimation: null,
   mapElementZoom: null,
+  mapViewportGuard: false,
   settingsSearch: "",
   username: "",
   authMode: "login",
@@ -685,6 +686,7 @@ function destroyMapGraph() {
   state.mapViewAnimation?.cancel?.();
   state.mapViewAnimation = null;
   state.mapElementZoom = null;
+  state.mapViewportGuard = false;
   const container = document.getElementById("transaction-map");
   if (container) {
     container.style.backgroundPosition = "";
@@ -697,8 +699,15 @@ function destroyMapGraph() {
 function mapPoint(latitude, longitude, index = 0) {
   const container = document.getElementById("transaction-map"),
     width = Math.max(1, container?.clientWidth || 1000),
-    height = Math.max(1, container?.clientHeight || 483);
-  if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude)))
+    height = Math.max(1, container?.clientHeight || 483),
+    located =
+      latitude !== null &&
+      latitude !== undefined &&
+      longitude !== null &&
+      longitude !== undefined &&
+      Number.isFinite(Number(latitude)) &&
+      Number.isFinite(Number(longitude));
+  if (!located)
     return {
       x: 26 + (index % Math.max(1, Math.floor(width / 52))) * 52,
       y: height - 24 - Math.floor(index / Math.max(1, Math.floor(width / 52))) * 34,
@@ -720,13 +729,18 @@ function positionMapGraph() {
   if (!graph || !container) return;
   const width = Math.max(1, container.clientWidth),
     height = Math.max(1, container.clientHeight),
+    positionNode = (node, point) => {
+      node.scratch("mapBase", point);
+      node.position(point);
+    },
     clampPoint = (point, margin = 24) => ({
       x: Math.max(margin, Math.min(width - margin, point.x)),
       y: Math.max(margin, Math.min(height - margin, point.y)),
     });
   let unlocated = 0;
   graph.nodes('[kind = "place"]').forEach((node) => {
-    node.position(
+    positionNode(
+      node,
       mapPoint(
         node.data("latitude"),
         node.data("longitude"),
@@ -743,7 +757,7 @@ function positionMapGraph() {
     ),
     42,
   );
-  transaction.position(center);
+  positionNode(transaction, center);
   const endpointGroups = new Map();
   graph
     .nodes('.focus[kind = "endpoint"]')
@@ -766,6 +780,7 @@ function positionMapGraph() {
         group = endpointGroups.get(key) || [];
       group.push({
         node,
+        located,
         point: mapPoint(
           located ? latitude : null,
           located ? longitude : null,
@@ -783,14 +798,17 @@ function positionMapGraph() {
         : group.length > 1
           ? Math.min(24, 10 + group.length * 2)
           : 0;
-    group.forEach(({ node, point }, index) => {
+    group.forEach(({ node, point, located }, index) => {
       const angle = -Math.PI / 2 + (index * Math.PI * 2) / group.length;
-      node.position(
-        clampPoint({
-          x: point.x + Math.cos(angle) * radius,
-          y: point.y + Math.sin(angle) * radius,
-        }),
-      );
+      let x = point.x + Math.cos(angle) * radius;
+      if (located) {
+        while (x - center.x > width / 2) x -= width;
+        while (x - center.x < -width / 2) x += width;
+      }
+      positionNode(node, {
+        x,
+        y: clampPoint({ x, y: point.y + Math.sin(angle) * radius }).y,
+      });
     });
   });
   const positionWallets = (side, direction) => {
@@ -813,7 +831,8 @@ function positionMapGraph() {
         row = Math.floor(index / columns),
         rowColumns = Math.min(columns, nodes.length - row * columns),
         rowStart = center.x - ((rowColumns - 1) * xSpacing) / 2;
-      node.position(
+      positionNode(
+        node,
         clampPoint({
           x: rowStart + column * xSpacing,
           y: center.y + direction * (88 + row * ySpacing),
@@ -827,12 +846,36 @@ function positionMapGraph() {
 function syncMapBackground() {
   const graph = state.mapGraph,
     container = document.getElementById("transaction-map");
-  if (!graph || !container) return;
-  const zoom = graph.zoom(),
-    pan = graph.pan();
-  container.style.backgroundSize = `${container.clientWidth * zoom}px ${container.clientHeight * zoom}px`;
-  container.style.backgroundPosition = `${pan.x}px ${pan.y}px`;
-  syncFocusScale();
+  if (!graph || !container || state.mapViewportGuard) return;
+  state.mapViewportGuard = true;
+  try {
+    const containerWidth = Math.max(1, container.clientWidth),
+      containerHeight = Math.max(1, container.clientHeight),
+      zoom = Math.max(1, graph.zoom()),
+      worldWidth = containerWidth * zoom,
+      worldHeight = containerHeight * zoom,
+      currentPan = graph.pan(),
+      wrapped = ((currentPan.x % worldWidth) + worldWidth) % worldWidth,
+      x = wrapped > 0 ? wrapped - worldWidth : 0,
+      y = Math.max(containerHeight - worldHeight, Math.min(0, currentPan.y));
+    if (graph.zoom() !== zoom) graph.zoom(zoom);
+    if (Math.abs(currentPan.x - x) > 0.1 || Math.abs(currentPan.y - y) > 0.1)
+      graph.pan({ x, y });
+    const viewportCenter = containerWidth / 2;
+    graph.nodes().forEach((node) => {
+      const base = node.scratch("mapBase");
+      if (!base) return;
+      const copy = Math.round(
+        (viewportCenter - x - base.x * zoom) / worldWidth,
+      );
+      node.position({ x: base.x + copy * containerWidth, y: base.y });
+    });
+    container.style.backgroundSize = `${worldWidth}px ${worldHeight}px`;
+    container.style.backgroundPosition = `${x}px ${y}px`;
+    syncFocusScale();
+  } finally {
+    state.mapViewportGuard = false;
+  }
 }
 function syncFocusScale(force = false) {
   const graph = state.mapGraph;
@@ -922,7 +965,7 @@ function focusMapViewport(animated = true) {
       (width - 72) / Math.max(240, bounds.w),
       (height - 72) / Math.max(190, bounds.h),
     ),
-    scale = Math.max(0.82, Math.min(1.08, fittedScale)),
+    scale = Math.max(graph.minZoom(), Math.min(1.08, fittedScale)),
     centerX = bounds.x1 + bounds.w / 2,
     centerY = bounds.y1 + bounds.h / 2,
     horizontalPan = width - width * scale,
@@ -1032,7 +1075,7 @@ function renderMapOverview(data) {
     layout: { name: "preset", fit: false },
     userPanningEnabled: true,
     userZoomingEnabled: true,
-    minZoom: 0.75,
+    minZoom: 1,
     maxZoom: 4,
     wheelSensitivity: 0.18,
     boxSelectionEnabled: false,

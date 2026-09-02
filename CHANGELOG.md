@@ -16,6 +16,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Bounded overview and focus projections that retain full counts and disclose consolidated route groups or labelled overflow nodes.
 - Map aggregation, geolocation fallback, missing/corrupt database, and graph-budget regression coverage.
 - Focused IP markers now retain their approximate geographic coordinates and use curved relationship paths instead of schematic straight-line lanes.
+- World-map navigation now uses a full-world minimum zoom, bounded vertical panning, and horizontally wrapped Pacific edges.
 
 ### Changed
 

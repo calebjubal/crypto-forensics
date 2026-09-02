@@ -6,6 +6,7 @@ Satoshi Trace v1.0.4 adds an entirely offline transaction world map to the Prior
 
 - **Full-case transaction map** — every imported network observation contributes to dotted, cluster-colored source-city-to-destination-city routes over a bundled Natural Earth outline.
 - **Focused lead paths** — selecting a lead smoothly fits the map, hides the overview routes, and shows only the bold, curved source IP, transaction, destination IP, and wallet path. IP markers remain at their approximate GeoIP coordinates; transaction and wallet nodes are explicitly logical rather than physical locations. Selecting that lead again restores the complete overview; Inspect remains separate.
+- **Bounded world navigation** — zoom-out stops at the complete world view, vertical movement cannot reveal empty canvas, and east/west movement wraps across the Pacific seam.
 - **Investigator map navigation** — drag to move, use a mouse wheel or pinch gesture to zoom, or use the accessible zoom and reset controls. Reduced-motion preferences are respected.
 - **Offline City Lite geolocation** — the packaged DB-IP City Lite September 2026 database resolves IPv4 and IPv6 without runtime network access or writes to evidentiary tables.
 - **Disclosed fallbacks and limits** — supplied country metadata is used only as a labelled centroid fallback, unlocated endpoints remain visible in totals, and graph overflow is represented by count nodes.
