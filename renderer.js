@@ -713,47 +713,88 @@ function mapPoint(latitude, longitude, index = 0) {
   };
 }
 function positionMapGraph() {
-  const graph = state.mapGraph;
-  if (!graph) return;
-  let unlocated = 0;
-  graph.nodes().forEach((node) => {
-    const kind = node.data("kind");
-    if (["place", "endpoint", "transaction"].includes(kind)) {
-      const located =
-        node.data("latitude") !== null &&
-        node.data("latitude") !== undefined &&
-        node.data("longitude") !== null &&
-        node.data("longitude") !== undefined &&
-        Number.isFinite(Number(node.data("latitude"))) &&
-        Number.isFinite(Number(node.data("longitude")));
-      node.position(
-        mapPoint(
-          located ? node.data("latitude") : null,
-          located ? node.data("longitude") : null,
-          located ? 0 : unlocated++,
-        ),
-      );
-      return;
-    }
-    const transaction = graph.getElementById("focus:transaction"),
-      center = transaction.length
-        ? transaction.position()
-        : mapPoint(0, 0),
-      side = node.data("side") || "output",
-      slot = Number(node.data("slot")) || 0,
-      ring = Math.floor(slot / 12),
-      step = slot % 12,
-      direction = side === "input" ? -1 : 1,
-      point = {
-        x: center.x + direction * (58 + ring * 24),
-        y: center.y + (step - 5.5) * 13,
-      },
-      container = document.getElementById("transaction-map");
-    node.position({
-      x: Math.max(15, Math.min((container?.clientWidth || 1000) - 15, point.x)),
-      y: Math.max(15, Math.min((container?.clientHeight || 483) - 15, point.y)),
+  const graph = state.mapGraph,
+    container = document.getElementById("transaction-map");
+  if (!graph || !container) return;
+  const width = Math.max(1, container.clientWidth),
+    height = Math.max(1, container.clientHeight),
+    clampPoint = (point, margin = 24) => ({
+      x: Math.max(margin, Math.min(width - margin, point.x)),
+      y: Math.max(margin, Math.min(height - margin, point.y)),
     });
+  let unlocated = 0;
+  graph.nodes('[kind = "place"]').forEach((node) => {
+    node.position(
+      mapPoint(
+        node.data("latitude"),
+        node.data("longitude"),
+        unlocated++,
+      ),
+    );
   });
+  const transaction = graph.getElementById("focus:transaction");
+  if (!transaction.length) return;
+  const geographicCenter = mapPoint(
+      transaction.data("latitude"),
+      transaction.data("longitude"),
+    ),
+    center = {
+      x: Math.max(width * 0.38, Math.min(width * 0.62, geographicCenter.x)),
+      y: Math.max(height * 0.36, Math.min(height * 0.64, geographicCenter.y)),
+    };
+  transaction.position(center);
+  const positionEndpoints = (role, direction) => {
+    const nodes = graph
+        .nodes(`.focus[kind = "endpoint"][role = "${role}"]`)
+        .sort((a, b) => a.id().localeCompare(b.id())),
+      rows = Math.max(1, Math.min(8, nodes.length)),
+      rowSpacing = Math.max(
+        18,
+        Math.min(42, (height - 110) / Math.max(1, rows - 1)),
+      );
+    nodes.forEach((node, index) => {
+      const column = Math.floor(index / rows),
+        row = index % rows;
+      node.position(
+        clampPoint({
+          x: center.x + direction * (135 + column * 42),
+          y: center.y + (row - (rows - 1) / 2) * rowSpacing,
+        }),
+      );
+    });
+  };
+  positionEndpoints("source", -1);
+  positionEndpoints("destination", 1);
+  const positionWallets = (side, direction) => {
+    const nodes = graph
+        .nodes(`.focus[side = "${side}"]`)
+        .filter((node) => node.data("kind") !== "endpoint")
+        .sort((a, b) => a.id().localeCompare(b.id())),
+      columns = Math.max(1, Math.min(14, Math.ceil(Math.sqrt(nodes.length * 2)))),
+      rows = Math.max(1, Math.ceil(nodes.length / columns)),
+      xSpacing = Math.max(
+        20,
+        Math.min(42, (width - 80) / Math.max(1, columns - 1)),
+      ),
+      ySpacing = Math.max(
+        16,
+        Math.min(28, (height / 2 - 105) / Math.max(1, rows - 1)),
+      );
+    nodes.forEach((node, index) => {
+      const column = index % columns,
+        row = Math.floor(index / columns),
+        rowColumns = Math.min(columns, nodes.length - row * columns),
+        rowStart = center.x - ((rowColumns - 1) * xSpacing) / 2;
+      node.position(
+        clampPoint({
+          x: rowStart + column * xSpacing,
+          y: center.y + direction * (88 + row * ySpacing),
+        }),
+      );
+    });
+  };
+  positionWallets("input", -1);
+  positionWallets("output", 1);
 }
 function syncMapBackground() {
   const graph = state.mapGraph,
@@ -805,19 +846,21 @@ function focusMapViewport(animated = true) {
     width = Math.max(1, container.clientWidth),
     height = Math.max(1, container.clientHeight),
     fittedScale = Math.min(
-      (width - 36) / Math.max(160, bounds.w),
-      (height - 36) / Math.max(120, bounds.h),
+      (width - 72) / Math.max(240, bounds.w),
+      (height - 72) / Math.max(190, bounds.h),
     ),
-    scale = Math.max(1.08, Math.min(1.7, fittedScale)),
+    scale = Math.max(0.82, Math.min(1.22, fittedScale)),
     centerX = bounds.x1 + bounds.w / 2,
     centerY = bounds.y1 + bounds.h / 2,
-    x = Math.min(
-      0,
-      Math.max(width - width * scale, width / 2 - centerX * scale),
+    horizontalPan = width - width * scale,
+    verticalPan = height - height * scale,
+    x = Math.max(
+      Math.min(0, horizontalPan),
+      Math.min(Math.max(0, horizontalPan), width / 2 - centerX * scale),
     ),
-    y = Math.min(
-      0,
-      Math.max(height - height * scale, height / 2 - centerY * scale),
+    y = Math.max(
+      Math.min(0, verticalPan),
+      Math.min(Math.max(0, verticalPan), height / 2 - centerY * scale),
     );
   setMapViewport({ x, y, scale }, animated);
 }
@@ -965,29 +1008,38 @@ function renderMapOverview(data) {
         selector: 'node[kind = "endpoint"]',
         style: {
           shape: "ellipse",
-          width: 25,
-          height: 25,
+          width: 22,
+          height: 22,
           "font-size": 7,
           "background-color": "#22d3ee",
           "border-color": "#ecfeff",
-          "border-width": 3,
+          "border-width": 2,
+          "text-margin-y": 5,
           "z-index": 20,
+        },
+      },
+      {
+        selector: 'node[kind = "endpoint"][role = "destination"]',
+        style: {
+          "background-color": "#60a5fa",
+          "border-color": "#dbeafe",
         },
       },
       {
         selector: 'node[kind = "transaction"]',
         style: {
           shape: "diamond",
-          width: 54,
-          height: 54,
-          "font-size": 11,
+          width: 48,
+          height: 48,
+          "font-size": 10,
           "font-weight": 700,
           "text-valign": "center",
           "text-margin-y": 0,
+          "text-outline-width": 0,
           color: "#ffffff",
           "background-color": "#dc2626",
           "border-color": "#fecaca",
-          "border-width": 4,
+          "border-width": 3,
           "z-index": 30,
         },
       },
@@ -995,13 +1047,14 @@ function renderMapOverview(data) {
         selector: 'node[kind = "wallet"]',
         style: {
           shape: "round-rectangle",
-          width: 30,
-          height: 24,
-          label: "W",
-          "font-size": 9,
+          width: 28,
+          height: 22,
+          label: "data(label)",
+          "font-size": 7,
           "font-weight": 700,
           "text-valign": "center",
           "text-margin-y": 0,
+          "text-outline-width": 0,
           color: "#071a33",
           "background-color": "data(color)",
           "border-color": "#ffffff",
@@ -1028,7 +1081,7 @@ function renderMapOverview(data) {
       {
         selector: 'edge[kind = "focus-network"]',
         style: {
-          width: 4,
+          width: 3,
           "line-color": "#22d3ee",
           "target-arrow-color": "#22d3ee",
           "target-arrow-shape": "triangle",
@@ -1041,7 +1094,7 @@ function renderMapOverview(data) {
       {
         selector: 'edge[kind = "focus-wallet"]',
         style: {
-          width: 4,
+          width: 3,
           "line-color": "data(color)",
           "target-arrow-color": "data(color)",
           "target-arrow-shape": "triangle",
@@ -1097,8 +1150,8 @@ function renderLeadFocus(data) {
         data: {
           id: transactionId,
           kind: "transaction",
-          label: `${data.transaction.priority || "Lead"}\n${data.transaction.score ?? "—"}/100`,
-          detail: `Transaction ${data.transaction.txid} · ${data.transaction.category || "No category"}`,
+          label: String(data.transaction.score ?? "—"),
+          detail: `${data.transaction.priority || "Flagged"} transaction · score ${data.transaction.score ?? "—"}/100 · ${data.transaction.txid} · ${data.transaction.category || "No category"}`,
           latitude: data.center.latitude,
           longitude: data.center.longitude,
         },
@@ -1112,7 +1165,7 @@ function renderLeadFocus(data) {
         id,
         kind: "endpoint",
         role: endpoint.role,
-        label: endpoint.role === "source" ? "SRC IP" : "DST IP",
+        label: endpoint.role === "source" ? "SRC" : "DST",
         detail: `${endpoint.ip} · ${endpoint.city || "Unlocated"}${endpoint.region ? `, ${endpoint.region}` : ""} · ${endpoint.countryName || "unknown country"} · ${endpoint.source === "db-ip-city-lite" ? "DB-IP approximate city" : "supplied-country fallback"}${endpoint.countryConflict ? ` · supplied country ${endpoint.suppliedCountry} conflicts with derived ${endpoint.country}` : ""}`,
         latitude: endpoint.latitude,
         longitude: endpoint.longitude,
@@ -1140,6 +1193,7 @@ function renderLeadFocus(data) {
         kind: "wallet",
         side,
         slot: sideSlots[side]++,
+        label: side === "input" ? "IN" : "OUT",
         color,
         detail: `${side === "input" ? "Input" : "Output"} wallet ${wallet.address} · ${wallet.cluster_id ? `cluster ${wallet.cluster_id}` : "unclustered"}`,
       },
