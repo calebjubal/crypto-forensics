@@ -213,6 +213,9 @@ test("correlates, trains, clusters and emits explainable leads", async () => {
   assert.ok(d.observations.length > 0);
   const clusters = page(db, "clusters", { limit: 1 });
   assert.ok(clusters.rows.length > 0);
+  assert.ok(clusters.stats.hypotheses > 0);
+  assert.ok(clusters.stats.wallets >= clusters.rows[0].size);
+  assert.equal(typeof clusters.rows[0].embedding_links, "number");
   const cluster = clusterDetail(db, clusters.rows[0].id);
   assert.ok(cluster.graph.links.length > 0);
   assert.ok(cluster.graph.linkTotal >= cluster.graph.links.length);
@@ -271,6 +274,12 @@ test("graph embeddings join repeatedly co-occurring wallet hypotheses", async ()
     );
   assert.equal(memberships.length, 2);
   assert.equal(memberships[0].cluster_id, memberships[1].cluster_id);
+  const clusterPage = page(db, "clusters", {
+    search: memberships[0].cluster_id,
+    limit: 1,
+  });
+  assert.equal(clusterPage.rows[0].embedding_links, 1);
+  assert.equal(clusterPage.stats.graph_assisted, 1);
   const embeddingCluster = clusterDetail(db, memberships[0].cluster_id);
   assert.equal(embeddingCluster.embeddingLinks.length, 1);
   assert.equal(embeddingCluster.embeddingLinks[0].shared_contexts, 2);

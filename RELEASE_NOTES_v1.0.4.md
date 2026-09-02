@@ -12,6 +12,7 @@ Satoshi Trace v1.0.4 adds an entirely offline transaction world map to the Prior
 - **Disclosed fallbacks and limits** — supplied country metadata is used only as a labelled centroid fallback, unlocated endpoints remain visible in totals, and graph overflow is represented by count nodes.
 - **Cluster color settings** — deterministic contrast-safe colors can be searched, customized, reset individually, or reset together and persist for the local investigator account.
 - **Graph-assisted entity hypotheses** — common-input components can be linked through deterministic 32-dimensional transaction-neighborhood embeddings only after repeated shared contexts, high cosine similarity, input-side evidence, collaborative-pattern exclusion, and a strict size cap.
+- **Entity analysis dashboard** — case-wide cluster metrics, method badges, network glyphs, relative wallet/activity bars, and embedding-link counts make hypotheses easier to compare before opening the full Cytoscape graph.
 
 ## Interpretation warning
 
