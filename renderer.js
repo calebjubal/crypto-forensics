@@ -444,7 +444,7 @@ async function leadsWorkspace() {
       '<button class="button" data-action="export-json">Export JSON</button><button class="button" data-action="export-csv">Export CSV</button><button class="button button-primary" data-action="analyze">Re-run analysis</button>',
     ) +
     staleNotice() +
-    `<section class="lead-map-layout"><aside class="map-lead-panel panel"><div class="map-lead-toolbar"><label class="search"><span class="screen-reader">Search priority leads</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, wallet, or IP…"></label><div class="map-lead-filters"><select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((value) => `<option ${state.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div></div><div class="map-lead-results"><div class="loading">Loading flag list…</div></div></aside><section class="transaction-map-panel" aria-label="Transaction world map"><div class="transaction-map-head"><div><span class="eyebrow">FULL CASE CONTEXT</span><h2>Transaction routes</h2><p id="map-caption">Loading offline city correlations…</p></div><button class="map-clear button button-small" data-map-clear hidden>Clear focus</button></div><div id="map-stats" class="map-stats" aria-live="polite"></div><div class="transaction-map-stage"><div id="transaction-map" class="transaction-map" role="img" aria-label="Interactive world map of transaction observations. Drag to move and use the mouse wheel or controls to zoom."></div><div class="map-navigation" role="group" aria-label="Map navigation"><button type="button" data-map-zoom="in" aria-label="Zoom in" title="Zoom in">+</button><button type="button" data-map-zoom="out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-map-zoom="reset" aria-label="Reset map view" title="Reset map view">Reset</button></div><div id="map-empty" class="map-empty" hidden></div></div><div class="transaction-map-legend"><span><i class="map-key dotted"></i>Aggregated transaction route</span><span><i class="map-key solid"></i>Selected lead path</span><span><i class="map-key wallet"></i>Cluster-colored wallet</span><span>Drag to move · wheel or pinch to zoom</span></div><div class="map-status"><span id="map-selection">Select a lead to show only its IP, transaction, and wallet path. Select it again to restore all routes.</span><span id="map-attribution"></span></div></section></section>`;
+    `<section class="lead-map-layout"><aside class="map-lead-panel panel"><div class="map-lead-toolbar"><label class="search"><span class="screen-reader">Search priority leads</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, wallet, or IP…"></label><div class="map-lead-filters"><select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((value) => `<option ${state.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div></div><div class="map-lead-results"><div class="loading">Loading flag list…</div></div></aside><section class="transaction-map-panel" aria-label="Transaction world map"><div class="transaction-map-head"><div><span class="eyebrow">FULL CASE CONTEXT</span><h2>Transaction routes</h2><p id="map-caption">Loading offline city correlations…</p></div><button class="map-clear button button-small" data-map-clear hidden>Clear focus</button></div><div id="map-stats" class="map-stats" aria-live="polite"></div><div class="transaction-map-stage"><div id="transaction-map" class="transaction-map" role="img" aria-label="Interactive world map of transaction observations. IP markers use approximate GeoIP coordinates. Drag to move and use the mouse wheel or controls to zoom."></div><div class="map-navigation" role="group" aria-label="Map navigation"><button type="button" data-map-zoom="in" aria-label="Zoom in" title="Zoom in">+</button><button type="button" data-map-zoom="out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-map-zoom="reset" aria-label="Reset map view" title="Reset map view">Reset</button></div><div id="map-empty" class="map-empty" hidden></div></div><div class="transaction-map-legend"><span><i class="map-key dotted"></i>Aggregated transaction route</span><span><i class="map-key solid"></i>Curved selected path</span><span><i class="map-key wallet"></i>Logical wallet / transaction nodes</span><span>IP markers use approximate GeoIP positions · drag to move · wheel or pinch to zoom</span></div><div class="map-status"><span id="map-selection">Select a lead to show only its IP, transaction, and wallet path. Select it again to restore all routes.</span><span id="map-attribution"></span></div></section></section>`;
   await refreshMapLeadList();
   await loadMapOverview();
 }
@@ -553,7 +553,7 @@ async function methodology() {
       )
       .join(
         "",
-      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>World map interpretation</h2><p>Approximate context, never evidentiary location proof</p></div></div><div class="panel-body"><ol class="method-list"><li>DB-IP City Lite resolves IPv4 and IPv6 endpoints entirely offline and is cached only for the current session.</li><li>Unmatched or non-public IPs use supplied country metadata as a labelled country-centroid fallback, or remain unlocated.</li><li>Dotted overview routes aggregate all observations by source city, destination city, and common-input cluster while preserving totals.</li><li>Selecting one lead adds its bold IP → transaction → IP and transaction → wallet path; graph limits are disclosed with count nodes.</li><li>Approximate location and IP association do not prove identity, physical presence, wallet ownership, or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Model</span><strong>${c.modelAvailable ? "Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Training rows</span><strong>${num(c.trainingRows)} / 8,192</strong></div><div class="kv"><span>Forest</span><strong>${c.modelAvailable ? `${c.trees} trees · sample ${c.subsample}` : "Requires ≥32 transactions"}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Feature set: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nClustering: ${esc(c.clustering)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
+      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>World map interpretation</h2><p>Approximate context, never evidentiary location proof</p></div></div><div class="panel-body"><ol class="method-list"><li>DB-IP City Lite resolves IPv4 and IPv6 endpoints entirely offline and is cached only for the current session.</li><li>Unmatched or non-public IPs use supplied country metadata as a labelled country-centroid fallback, or remain unlocated.</li><li>Dotted overview routes aggregate all observations by source city, destination city, and common-input cluster while preserving totals.</li><li>Selecting one lead keeps IP markers at their approximate GeoIP coordinates and connects them with curved paths; transaction and wallet nodes are logical, not physical locations.</li><li>Approximate location and IP association do not prove identity, physical presence, wallet ownership, or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Model</span><strong>${c.modelAvailable ? "Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Training rows</span><strong>${num(c.trainingRows)} / 8,192</strong></div><div class="kv"><span>Forest</span><strong>${c.modelAvailable ? `${c.trees} trees · sample ${c.subsample}` : "Requires ≥32 transactions"}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Feature set: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nClustering: ${esc(c.clustering)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
       ["Large value", "+25 · ≥100 BTC and above robust cutoff"],
       ["High fee", "+28 · >5% and ≥0.0001 BTC"],
       ["Fan-out", "+20 · ≥10 outputs"],
@@ -734,37 +734,63 @@ function positionMapGraph() {
   });
   const transaction = graph.getElementById("focus:transaction");
   if (!transaction.length) return;
-  const geographicCenter = mapPoint(
+  const center = clampPoint(
+    mapPoint(
       transaction.data("latitude"),
       transaction.data("longitude"),
     ),
-    center = {
-      x: Math.max(width * 0.38, Math.min(width * 0.62, geographicCenter.x)),
-      y: Math.max(height * 0.36, Math.min(height * 0.64, geographicCenter.y)),
-    };
+    42,
+  );
   transaction.position(center);
-  const positionEndpoints = (role, direction) => {
-    const nodes = graph
-        .nodes(`.focus[kind = "endpoint"][role = "${role}"]`)
-        .sort((a, b) => a.id().localeCompare(b.id())),
-      rows = Math.max(1, Math.min(8, nodes.length)),
-      rowSpacing = Math.max(
-        18,
-        Math.min(42, (height - 110) / Math.max(1, rows - 1)),
-      );
-    nodes.forEach((node, index) => {
-      const column = Math.floor(index / rows),
-        row = index % rows;
+  const endpointGroups = new Map();
+  graph
+    .nodes('.focus[kind = "endpoint"]')
+    .sort((a, b) => a.id().localeCompare(b.id()))
+    .forEach((node) => {
+      const rawLatitude = node.data("latitude"),
+        rawLongitude = node.data("longitude"),
+        latitude = Number(rawLatitude),
+        longitude = Number(rawLongitude),
+        located =
+          rawLatitude !== null &&
+          rawLatitude !== undefined &&
+          rawLongitude !== null &&
+          rawLongitude !== undefined &&
+          Number.isFinite(latitude) &&
+          Number.isFinite(longitude),
+        key = located
+          ? `${latitude.toFixed(3)}:${longitude.toFixed(3)}`
+          : `unlocated:${unlocated++}`,
+        group = endpointGroups.get(key) || [];
+      group.push({
+        node,
+        point: mapPoint(
+          located ? latitude : null,
+          located ? longitude : null,
+          unlocated,
+        ),
+      });
+      endpointGroups.set(key, group);
+    });
+  endpointGroups.forEach((group) => {
+    const sharedPoint = group[0].point,
+      overlapsTransaction =
+        Math.hypot(sharedPoint.x - center.x, sharedPoint.y - center.y) < 38,
+      radius = overlapsTransaction
+        ? Math.min(54, 40 + group.length * 3)
+        : group.length > 1
+          ? Math.min(24, 10 + group.length * 2)
+          : 0;
+    group.forEach(({ node, point }, index) => {
+      const angle = -Math.PI / 2 + (index * Math.PI * 2) / group.length;
       node.position(
         clampPoint({
-          x: center.x + direction * (135 + column * 42),
-          y: center.y + (row - (rows - 1) / 2) * rowSpacing,
+          x: point.x + Math.cos(angle) * radius,
+          y: point.y + Math.sin(angle) * radius,
         }),
       );
     });
-  };
-  positionEndpoints("source", -1);
-  positionEndpoints("destination", 1);
+  });
   const positionWallets = (side, direction) => {
     const nodes = graph
         .nodes(`.focus[side = "${side}"]`)
@@ -1015,6 +1041,8 @@ function renderMapOverview(data) {
           "border-color": "#ecfeff",
           "border-width": 2,
           "text-margin-y": 5,
+          "text-wrap": "wrap",
+          "text-max-width": 84,
           "z-index": 20,
         },
       },
@@ -1085,7 +1113,9 @@ function renderMapOverview(data) {
           "line-color": "#22d3ee",
           "target-arrow-color": "#22d3ee",
           "target-arrow-shape": "triangle",
-          "curve-style": "straight",
+          "curve-style": "unbundled-bezier",
+          "control-point-distances": "data(curveOffset)",
+          "control-point-weights": 0.5,
           "line-style": "solid",
           opacity: 1,
           "z-index": 22,
@@ -1098,7 +1128,9 @@ function renderMapOverview(data) {
           "line-color": "data(color)",
           "target-arrow-color": "data(color)",
           "target-arrow-shape": "triangle",
-          "curve-style": "straight",
+          "curve-style": "unbundled-bezier",
+          "control-point-distances": "data(curveOffset)",
+          "control-point-weights": 0.5,
           "line-style": "solid",
           opacity: 1,
           "z-index": 23,
@@ -1158,14 +1190,21 @@ function renderLeadFocus(data) {
       },
     ];
   data.endpoints.forEach((endpoint, index) => {
-    const id = `focus:endpoint:${index}`;
+    const id = `focus:endpoint:${index}`,
+      direction = index % 2 ? -1 : 1,
+      locationLabel =
+        endpoint.source === "db-ip-city-lite"
+          ? endpoint.city || endpoint.country || "Located"
+          : endpoint.source === "supplied-country"
+            ? `${endpoint.country || endpoint.countryName || "Country"} fallback`
+            : "Unlocated";
     elements.push({
       classes: "focus",
       data: {
         id,
         kind: "endpoint",
         role: endpoint.role,
-        label: endpoint.role === "source" ? "SRC" : "DST",
+        label: `${endpoint.role === "source" ? "SRC" : "DST"}\n${locationLabel}`,
         detail: `${endpoint.ip} · ${endpoint.city || "Unlocated"}${endpoint.region ? `, ${endpoint.region}` : ""} · ${endpoint.countryName || "unknown country"} · ${endpoint.source === "db-ip-city-lite" ? "DB-IP approximate city" : "supplied-country fallback"}${endpoint.countryConflict ? ` · supplied country ${endpoint.suppliedCountry} conflicts with derived ${endpoint.country}` : ""}`,
         latitude: endpoint.latitude,
         longitude: endpoint.longitude,
@@ -1176,6 +1215,7 @@ function renderLeadFocus(data) {
       data: {
         id: `focus:network-edge:${index}`,
         kind: "focus-network",
+        curveOffset: direction * (16 + Math.min(36, Math.floor(index / 2) * 5)),
         source: endpoint.role === "source" ? id : transactionId,
         target: endpoint.role === "source" ? transactionId : id,
       },
@@ -1204,6 +1244,9 @@ function renderLeadFocus(data) {
         id: `focus:wallet-edge:${index}`,
         kind: "focus-wallet",
         color,
+        curveOffset:
+          (index % 2 ? -1 : 1) *
+          (12 + Math.min(30, Math.floor(index / 2) * 4)),
         source: side === "input" ? id : transactionId,
         target: side === "input" ? transactionId : id,
       },
@@ -1230,6 +1273,7 @@ function renderLeadFocus(data) {
           id: `focus:summary-edge:${index}`,
           kind: summary.kind === "wallet" ? "focus-wallet" : "focus-network",
           color: "#94a3b8",
+          curveOffset: (index % 2 ? -1 : 1) * (18 + index * 3),
           source: side === "input" ? id : transactionId,
           target: side === "input" ? transactionId : id,
         },
@@ -1243,7 +1287,7 @@ function renderLeadFocus(data) {
     clear = document.querySelector("[data-map-clear]");
   if (clear) clear.hidden = false;
   if (status)
-    status.textContent = `${data.transaction.priority || "Flagged"} lead selected · overview routes hidden · select this lead again to restore all · ${num(data.totals.endpoints)} unique IP endpoints · ${num(data.totals.wallets)} wallets${data.totals.countryConflicts ? ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches` : ""}${data.totals.endpoints > data.totals.renderedEndpoints || data.totals.wallets > data.totals.renderedWallets ? " · overflow collapsed into count nodes" : ""}`;
+    status.textContent = `${data.transaction.priority || "Flagged"} lead selected · IP markers remain at approximate GeoIP coordinates · curved paths show relationships · transaction and wallet nodes are logical, not physical locations · select this lead again to restore all · ${num(data.totals.endpoints)} unique IP endpoints · ${num(data.totals.wallets)} wallets${data.totals.countryConflicts ? ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches` : ""}${data.totals.endpoints > data.totals.renderedEndpoints || data.totals.wallets > data.totals.renderedWallets ? " · overflow collapsed into count nodes" : ""}`;
 }
 async function selectMapLead(txid) {
   if (!txid || !state.mapGraph) return;

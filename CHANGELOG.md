@@ -15,6 +15,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Searchable per-investigator cluster color settings with deterministic defaults, individual reset, and reset-all controls shared by map and entity graphs.
 - Bounded overview and focus projections that retain full counts and disclose consolidated route groups or labelled overflow nodes.
 - Map aggregation, geolocation fallback, missing/corrupt database, and graph-budget regression coverage.
+- Focused IP markers now retain their approximate geographic coordinates and use curved relationship paths instead of schematic straight-line lanes.
 
 ### Changed
 
