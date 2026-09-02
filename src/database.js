@@ -472,12 +472,21 @@ function page(db, type, options = {}) {
     return {
       rows: db
         .prepare(
-          `SELECT * FROM clusters c WHERE size>1${filter} ORDER BY size DESC,id LIMIT ? OFFSET ?`,
+          `SELECT c.*,(SELECT count(*) FROM cluster_embedding_links e WHERE e.cluster_id=c.id) AS embedding_links
+            FROM clusters c WHERE size>1${filter} ORDER BY size DESC,tx_count DESC,id LIMIT ? OFFSET ?`,
         )
         .all(...params, limit, offset),
       total: db
         .prepare(`SELECT count(*) AS n FROM clusters c WHERE size>1${filter}`)
         .get(...params).n,
+      stats: db
+        .prepare(
+          `SELECT count(*) AS hypotheses,coalesce(sum(size),0) AS wallets,coalesce(sum(tx_count),0) AS transactions,
+            coalesce(max(size),0) AS largest,
+            (SELECT count(DISTINCT cluster_id) FROM cluster_embedding_links) AS graph_assisted
+            FROM clusters WHERE size>1`,
+        )
+        .get(),
       limit,
       offset,
     };

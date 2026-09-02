@@ -18,6 +18,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Focused IP markers now retain their approximate geographic coordinates and use curved relationship paths instead of schematic straight-line lanes.
 - World-map navigation now uses a full-world minimum zoom, bounded vertical panning, and horizontally wrapped Pacific edges.
 - Deterministic offline transaction-graph embeddings now supplement common-input entity hypotheses using repeated shared contexts, a high similarity threshold, collaborative-pattern exclusion, and a 100-wallet cap.
+- Entity Clusters now opens as an analysis dashboard with case-wide summary metrics, method badges, compact network glyphs, relative wallet/activity bars, and graph-assisted-link counts.
 
 ### Changed
 

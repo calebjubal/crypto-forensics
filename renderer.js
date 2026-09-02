@@ -507,6 +507,33 @@ async function activity() {
   });
   document.querySelector(".results").innerHTML = activityRows(d);
 }
+function clusterGlyph(graphAssisted) {
+  return `<svg viewBox="0 0 112 58" aria-hidden="true"><path d="M18 30L48 14L76 28L98 12M48 14L58 48L76 28L98 46"/><circle cx="18" cy="30" r="7"/><circle cx="48" cy="14" r="7"/><circle cx="58" cy="48" r="7"/><circle cx="76" cy="28" r="7"/><circle cx="98" cy="12" r="6"/><circle cx="98" cy="46" r="6"/>${graphAssisted ? '<path class="embedding-link" d="M18 30C40 2 73 55 98 12"/>' : ""}</svg>`;
+}
+function clusterSummary(stats) {
+  return `<section class="cluster-summary" aria-label="Entity cluster overview"><article><span class="cluster-summary-icon">◎</span><div><strong>${num(stats.hypotheses)}</strong><small>Multi-wallet hypotheses</small></div></article><article><span class="cluster-summary-icon">◫</span><div><strong>${num(stats.wallets)}</strong><small>Wallets grouped</small></div></article><article><span class="cluster-summary-icon">⌁</span><div><strong>${num(stats.graph_assisted)}</strong><small>Graph-assisted groups</small></div></article><article><span class="cluster-summary-icon">↗</span><div><strong>${num(stats.largest)}</strong><small>Largest group</small></div></article></section>`;
+}
+function clusterCards(data) {
+  const maximumSize = Math.max(1, ...data.rows.map((row) => row.size)),
+    maximumTransactions = Math.max(
+      1,
+      ...data.rows.map((row) => row.tx_count),
+    );
+  return `<div class="cluster-grid">${data.rows
+    .map((cluster, index) => {
+      const graphAssisted = cluster.embedding_links > 0,
+        sizeWidth = Math.max(7, Math.round((cluster.size / maximumSize) * 100)),
+        transactionWidth = Math.max(
+          7,
+          Math.round((cluster.tx_count / maximumTransactions) * 100),
+        ),
+        density = cluster.size
+          ? (cluster.tx_count / cluster.size).toFixed(1)
+          : "0.0";
+      return `<article class="cluster-card ${graphAssisted ? "is-assisted" : ""}" data-cluster-accent="${esc(clusterColor(cluster.id))}" data-cluster-size="${sizeWidth}" data-cluster-activity="${transactionWidth}"><div class="cluster-card-head"><span class="cluster-rank">#${String(data.offset + index + 1).padStart(2, "0")}</span><span class="cluster-method">${graphAssisted ? "GRAPH ASSISTED" : "COMMON INPUT"}</span></div><div class="cluster-card-visual">${clusterGlyph(graphAssisted)}<div><small>ENTITY HYPOTHESIS</small><h3>${esc(cluster.id)}</h3><span>${density} transactions per wallet</span></div></div><div class="cluster-bars"><div><span><b>Wallet footprint</b><em>${num(cluster.size)}</em></span><i role="progressbar" aria-label="Relative wallet footprint" aria-valuemin="0" aria-valuemax="${maximumSize}" aria-valuenow="${cluster.size}"><u class="size"></u></i></div><div><span><b>Transaction activity</b><em>${num(cluster.tx_count)}</em></span><i role="progressbar" aria-label="Relative transaction activity" aria-valuemin="0" aria-valuemax="${maximumTransactions}" aria-valuenow="${cluster.tx_count}"><u class="activity"></u></i></div></div><div class="cluster-card-foot"><div><strong>${num(cluster.embedding_links)}</strong><small>embedding links</small></div><button class="button" data-cluster="${esc(cluster.id)}">Explore graph →</button></div></article>`;
+    })
+    .join("")}</div><div class="table-footer"><span>${data.offset + 1}–${Math.min(data.total, data.offset + data.rows.length)} of ${num(data.total)}</span>${pager(data, "clusters")}</div>`;
+}
 async function clusters() {
   main.innerHTML =
     heading(
@@ -516,7 +543,7 @@ async function clusters() {
       '<button class="button button-primary" data-action="analyze">Rebuild clusters</button>',
     ) +
     staleNotice() +
-    `<div class="notice"><span><strong>Heuristic—not identity proof.</strong> Possible collaborative transactions are excluded. Embedding links require repeated shared transaction neighborhoods and high similarity; change-address and IP-ownership heuristics are not used.</span><button class="link-button" data-route="methodology">Read method →</button></div><section class="panel"><div class="toolbar"><label class="search"><span class="screen-reader">Search</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Find address in a cluster…"></label><span class="count">${num(state.summary.clusters)} multi-address hypotheses</span></div><div class="results"><div class="loading">Loading clusters…</div></div></section>`;
+    `<div class="notice"><span><strong>Heuristic—not identity proof.</strong> Possible collaborative transactions are excluded. Embedding links require repeated shared transaction neighborhoods and high similarity; change-address and IP-ownership heuristics are not used.</span><button class="link-button" data-route="methodology">Read method →</button></div><div id="cluster-summary"><div class="loading">Summarizing entity hypotheses…</div></div><section class="panel cluster-catalog"><div class="toolbar"><div><span class="toolbar-eyebrow">HYPOTHESIS CATALOG</span><label class="search"><span class="screen-reader">Search</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Find cluster ID or wallet…"></label></div><span class="count">${num(state.summary.clusters)} multi-address hypotheses</span></div><div class="results"><div class="loading">Loading clusters…</div></div></section>`;
   await refreshClusters();
 }
 async function refreshClusters() {
@@ -525,9 +552,20 @@ async function refreshClusters() {
       type: "clusters",
       options: { search: state.search, offset: state.offset, limit: 12 },
     });
-    document.querySelector(".results").innerHTML = d.rows.length
-      ? `<div class="cluster-grid">${d.rows.map((x) => `<article class="cluster-card"><div class="cluster-mini">●—●</div><h3>${esc(x.id)}</h3><div class="cluster-values"><div><strong>${num(x.size)}</strong><small>addresses</small></div><div><strong>${num(x.tx_count)}</strong><small>transactions</small></div></div><button class="button" data-cluster="${esc(x.id)}">Inspect hypothesis</button></article>`).join("")}</div><div class="table-footer"><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)}</span>${pager(d, "clusters")}</div>`
+    const summary = document.getElementById("cluster-summary");
+    if (summary) summary.innerHTML = clusterSummary(d.stats);
+    const results = document.querySelector(".results");
+    results.innerHTML = d.rows.length
+      ? clusterCards(d)
       : empty("entity clusters");
+    results.querySelectorAll(".cluster-card").forEach((card) => {
+      card.style.setProperty("--cluster-accent", card.dataset.clusterAccent);
+      card.style.setProperty("--cluster-size", `${card.dataset.clusterSize}%`);
+      card.style.setProperty(
+        "--cluster-activity",
+        `${card.dataset.clusterActivity}%`,
+      );
+    });
   } catch (e) {
     fail(e);
   }
