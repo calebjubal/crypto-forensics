@@ -48,6 +48,7 @@ const state = {
   mapOverview: null,
   mapResizeObserver: null,
   mapViewAnimation: null,
+  mapElementZoom: null,
   settingsSearch: "",
   username: "",
   authMode: "login",
@@ -683,6 +684,7 @@ function destroyMapGraph() {
   state.mapResizeObserver = null;
   state.mapViewAnimation?.cancel?.();
   state.mapViewAnimation = null;
+  state.mapElementZoom = null;
   const container = document.getElementById("transaction-map");
   if (container) {
     container.style.backgroundPosition = "";
@@ -830,6 +832,51 @@ function syncMapBackground() {
     pan = graph.pan();
   container.style.backgroundSize = `${container.clientWidth * zoom}px ${container.clientHeight * zoom}px`;
   container.style.backgroundPosition = `${pan.x}px ${pan.y}px`;
+  syncFocusScale();
+}
+function syncFocusScale(force = false) {
+  const graph = state.mapGraph;
+  if (!graph) return;
+  const zoom = Math.max(0.01, graph.zoom());
+  if (
+    !force &&
+    state.mapElementZoom !== null &&
+    Math.abs(state.mapElementZoom - zoom) < 0.025
+  )
+    return;
+  state.mapElementZoom = zoom;
+  const unit = 1 / zoom;
+  graph.nodes('.focus[kind = "endpoint"]').style({
+    width: 16 * unit,
+    height: 16 * unit,
+    "font-size": 6.5 * unit,
+    "border-width": 1.5 * unit,
+    "text-outline-width": 1.5 * unit,
+    "text-margin-y": 4 * unit,
+    "text-max-width": 74 * unit,
+  });
+  graph.nodes('.focus[kind = "transaction"]').style({
+    width: 34 * unit,
+    height: 34 * unit,
+    "font-size": 8 * unit,
+    "border-width": 2 * unit,
+  });
+  graph.nodes('.focus[kind = "wallet"]').style({
+    width: 20 * unit,
+    height: 16 * unit,
+    "font-size": 6 * unit,
+    "border-width": 1.5 * unit,
+  });
+  graph.nodes('.focus[kind $= "summary"]').style({
+    height: 18 * unit,
+    padding: 4 * unit,
+    "font-size": 6 * unit,
+    "border-width": 1.5 * unit,
+  });
+  graph.edges(".focus").style({
+    width: 1.8 * unit,
+    "arrow-scale": 0.72 * unit,
+  });
 }
 function setMapViewport({ x = 0, y = 0, scale = 1 }, animated = true) {
   const graph = state.mapGraph;
@@ -875,7 +922,7 @@ function focusMapViewport(animated = true) {
       (width - 72) / Math.max(240, bounds.w),
       (height - 72) / Math.max(190, bounds.h),
     ),
-    scale = Math.max(0.82, Math.min(1.22, fittedScale)),
+    scale = Math.max(0.82, Math.min(1.08, fittedScale)),
     centerX = bounds.x1 + bounds.w / 2,
     centerY = bounds.y1 + bounds.h / 2,
     horizontalPan = width - width * scale,
@@ -1034,15 +1081,15 @@ function renderMapOverview(data) {
         selector: 'node[kind = "endpoint"]',
         style: {
           shape: "ellipse",
-          width: 22,
-          height: 22,
-          "font-size": 7,
+          width: 16,
+          height: 16,
+          "font-size": 6.5,
           "background-color": "#22d3ee",
           "border-color": "#ecfeff",
-          "border-width": 2,
-          "text-margin-y": 5,
+          "border-width": 1.5,
+          "text-margin-y": 4,
           "text-wrap": "wrap",
-          "text-max-width": 84,
+          "text-max-width": 74,
           "z-index": 20,
         },
       },
@@ -1057,9 +1104,9 @@ function renderMapOverview(data) {
         selector: 'node[kind = "transaction"]',
         style: {
           shape: "diamond",
-          width: 48,
-          height: 48,
-          "font-size": 10,
+          width: 34,
+          height: 34,
+          "font-size": 8,
           "font-weight": 700,
           "text-valign": "center",
           "text-margin-y": 0,
@@ -1067,7 +1114,7 @@ function renderMapOverview(data) {
           color: "#ffffff",
           "background-color": "#dc2626",
           "border-color": "#fecaca",
-          "border-width": 3,
+          "border-width": 2,
           "z-index": 30,
         },
       },
@@ -1075,10 +1122,10 @@ function renderMapOverview(data) {
         selector: 'node[kind = "wallet"]',
         style: {
           shape: "round-rectangle",
-          width: 28,
-          height: 22,
+          width: 20,
+          height: 16,
           label: "data(label)",
-          "font-size": 7,
+          "font-size": 6,
           "font-weight": 700,
           "text-valign": "center",
           "text-margin-y": 0,
@@ -1086,7 +1133,7 @@ function renderMapOverview(data) {
           color: "#071a33",
           "background-color": "data(color)",
           "border-color": "#ffffff",
-          "border-width": 2,
+          "border-width": 1.5,
           "z-index": 25,
         },
       },
@@ -1095,12 +1142,12 @@ function renderMapOverview(data) {
         style: {
           shape: "round-rectangle",
           width: "label",
-          height: 24,
-          padding: 6,
+          height: 18,
+          padding: 4,
           "background-color": "#334155",
           "border-color": "#94a3b8",
-          "border-width": 2,
-          "font-size": 8,
+          "border-width": 1.5,
+          "font-size": 6,
           "text-valign": "center",
           "text-margin-y": 0,
           "z-index": 24,
@@ -1109,7 +1156,7 @@ function renderMapOverview(data) {
       {
         selector: 'edge[kind = "focus-network"]',
         style: {
-          width: 3,
+          width: 1.8,
           "line-color": "#22d3ee",
           "target-arrow-color": "#22d3ee",
           "target-arrow-shape": "triangle",
@@ -1124,7 +1171,7 @@ function renderMapOverview(data) {
       {
         selector: 'edge[kind = "focus-wallet"]',
         style: {
-          width: 3,
+          width: 1.8,
           "line-color": "data(color)",
           "target-arrow-color": "data(color)",
           "target-arrow-shape": "triangle",
@@ -1282,6 +1329,7 @@ function renderLeadFocus(data) {
   );
   graph.add(elements.slice(0, 1 + data.limits.edges * 2));
   positionMapGraph();
+  syncFocusScale(true);
   focusMapViewport(true);
   const status = document.getElementById("map-selection"),
     clear = document.querySelector("[data-map-clear]");
