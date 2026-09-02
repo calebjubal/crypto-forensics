@@ -19,6 +19,51 @@ const FEATURE_NAMES = [
   "log_source_minute_transactions",
 ];
 const RULE_VERSION = "1.0.0";
+const GRAPH_EMBEDDING = Object.freeze({
+  version: "1.0.0",
+  projection: "SHA-256 signed bipartite-neighborhood projection",
+  dimensions: 32,
+  inputWeight: 0.6,
+  outputWeight: 1,
+  minimumSharedContexts: 2,
+  minimumCosine: 0.82,
+  maximumCandidateOutputs: 40,
+  maximumClusterSize: 100,
+});
+
+function graphProjection(txid, side) {
+  const digest = createHash("sha256").update(`${side}:${txid}`).digest(),
+    scale = 1 / Math.sqrt(GRAPH_EMBEDDING.dimensions);
+  return Float64Array.from(
+    { length: GRAPH_EMBEDDING.dimensions },
+    (_, index) => (digest[index] >= 128 ? 1 : -1) * scale,
+  );
+}
+
+function addProjection(embeddings, key, projection, weight) {
+  let vector = embeddings.get(key);
+  if (!vector) {
+    vector = new Float64Array(GRAPH_EMBEDDING.dimensions);
+    embeddings.set(key, vector);
+  }
+  for (let index = 0; index < vector.length; index++)
+    vector[index] += projection[index] * weight;
+}
+
+function cosineSimilarity(left, right) {
+  if (!left || !right) return 0;
+  let dot = 0,
+    leftNorm = 0,
+    rightNorm = 0;
+  for (let index = 0; index < left.length; index++) {
+    dot += left[index] * right[index];
+    leftNorm += left[index] ** 2;
+    rightNorm += right[index] ** 2;
+  }
+  return leftNorm && rightNorm
+    ? dot / Math.sqrt(leftNorm * rightNorm)
+    : 0;
+}
 
 function vector(row) {
   return [
@@ -198,7 +243,12 @@ function analyze(
       baseline,
       featureSha256: digest.digest("hex"),
       clustering:
-        "Common-input heuristic; excludes ≥3 inputs with ≥3 equal positive outputs; never links ownership through IP or output/change heuristics.",
+        "Common-input ownership plus deterministic 32-dimensional transaction-graph embeddings; excludes collaborative patterns and never uses IP or change-address ownership heuristics.",
+      graphEmbedding: {
+        ...GRAPH_EMBEDDING,
+        candidatePairs: 0,
+        acceptedLinks: 0,
+      },
     };
     db.prepare("INSERT INTO analysis_runs VALUES(?,?,?,?,?,?)").run(
       id,
@@ -209,7 +259,7 @@ function analyze(
       JSON.stringify(model),
     );
     db.exec(
-      "DELETE FROM lead_scores; DELETE FROM cluster_members; DELETE FROM clusters;",
+      "DELETE FROM lead_scores; DELETE FROM cluster_embedding_links; DELETE FROM cluster_members; DELETE FROM clusters;",
     );
     const insert = db.prepare(
       "INSERT INTO lead_scores VALUES(?,?,?,?,?,?,?,?)",
@@ -252,10 +302,10 @@ function analyze(
         });
     }
     onProgress({
-      phase: "Clustering common-input address hypotheses",
+      phase: "Building common-input and graph-embedding hypotheses",
       percent: 70,
     });
-    // Memory is O(unique addresses); transaction features and scores remain on disk.
+    // Memory is O(unique addresses); transaction features, scores, and graph-context pairs remain in SQLite.
     const parents = new Map();
     function find(value) {
       if (!parents.has(value)) parents.set(value, value);
@@ -291,6 +341,113 @@ function analyze(
       const inputs = JSON.parse(row.input_addresses);
       for (let i = 1; i < inputs.length; i++) union(inputs[0], inputs[i]);
     }
+    onProgress({
+      phase: "Comparing repeated graph neighborhoods",
+      percent: 80,
+    });
+    db.exec(`DROP TABLE IF EXISTS temp.embedding_contexts;
+      CREATE TEMP TABLE embedding_contexts(left_root TEXT NOT NULL,right_root TEXT NOT NULL,contexts INTEGER NOT NULL,
+        PRIMARY KEY(left_root,right_root));`);
+    const embeddings = new Map(),
+      inputRoots = new Set(),
+      addSharedContext = db.prepare(
+        `INSERT INTO embedding_contexts VALUES(?,?,1)
+          ON CONFLICT(left_root,right_root) DO UPDATE SET contexts=contexts+1`,
+      );
+    for (const row of chunks(
+      db,
+      "SELECT txid,input_addresses,output_addresses,coinjoin FROM transactions",
+      "txid",
+    )) {
+      check();
+      const inputs = JSON.parse(row.input_addresses),
+        outputs = JSON.parse(row.output_addresses),
+        inputProjection = graphProjection(row.txid, "input"),
+        outputProjection = graphProjection(row.txid, "output");
+      for (const address of inputs) {
+        const root = find(address);
+        inputRoots.add(root);
+        addProjection(
+          embeddings,
+          root,
+          inputProjection,
+          GRAPH_EMBEDDING.inputWeight,
+        );
+      }
+      for (const address of outputs)
+        addProjection(
+          embeddings,
+          find(address),
+          outputProjection,
+          GRAPH_EMBEDDING.outputWeight,
+        );
+      if (
+        row.coinjoin ||
+        outputs.length < 2 ||
+        outputs.length > GRAPH_EMBEDDING.maximumCandidateOutputs
+      )
+        continue;
+      const roots = [...new Set(outputs.map((address) => find(address)))].sort();
+      for (let left = 0; left < roots.length; left++)
+        for (let right = left + 1; right < roots.length; right++)
+          addSharedContext.run(roots[left], roots[right]);
+    }
+    const commonInputSizes = new Map();
+    for (const address of parents.keys()) {
+      const root = find(address);
+      commonInputSizes.set(root, (commonInputSizes.get(root) || 0) + 1);
+    }
+    const candidates = [];
+    const candidateStatement = db.prepare(
+      "SELECT rowid,left_root AS left,right_root AS right,contexts FROM embedding_contexts WHERE rowid>? AND contexts>=? ORDER BY rowid LIMIT 1000",
+    );
+    let candidateCursor = 0;
+    while (true) {
+      const rows = candidateStatement.all(
+        candidateCursor,
+        GRAPH_EMBEDDING.minimumSharedContexts,
+      );
+      if (!rows.length) break;
+      for (const { left, right, contexts } of rows) {
+        if (!inputRoots.has(left) || !inputRoots.has(right)) continue;
+        const similarity = cosineSimilarity(
+          embeddings.get(left),
+          embeddings.get(right),
+        );
+        if (similarity < GRAPH_EMBEDDING.minimumCosine) continue;
+        candidates.push({ left, right, contexts, similarity });
+      }
+      candidateCursor = rows[rows.length - 1].rowid;
+    }
+    candidates.sort(
+      (a, b) =>
+        b.contexts - a.contexts ||
+        b.similarity - a.similarity ||
+        a.left.localeCompare(b.left) ||
+        a.right.localeCompare(b.right),
+    );
+    const acceptedEmbeddingLinks = [];
+    for (const candidate of candidates) {
+      check();
+      const left = find(candidate.left),
+        right = find(candidate.right);
+      if (left === right) continue;
+      const combined =
+        (commonInputSizes.get(left) || 0) + (commonInputSizes.get(right) || 0);
+      if (combined > GRAPH_EMBEDDING.maximumClusterSize) continue;
+      union(left, right);
+      const merged = find(left);
+      commonInputSizes.delete(left);
+      commonInputSizes.delete(right);
+      commonInputSizes.set(merged, combined);
+      acceptedEmbeddingLinks.push(candidate);
+    }
+    config.graphEmbedding.candidatePairs = candidates.length;
+    config.graphEmbedding.acceptedLinks = acceptedEmbeddingLinks.length;
+    db.prepare("UPDATE analysis_runs SET config=? WHERE id=?").run(
+      JSON.stringify(config),
+      id,
+    );
     const sizes = new Map();
     for (const addr of parents.keys()) {
       const root = find(addr);
@@ -309,6 +466,19 @@ function analyze(
       check();
       insertMember.run(addr, ids.get(find(addr)));
     }
+    const insertEmbeddingLink = db.prepare(
+      "INSERT INTO cluster_embedding_links VALUES(?,?,?,?,?)",
+    );
+    for (const link of acceptedEmbeddingLinks) {
+      check();
+      insertEmbeddingLink.run(
+        ids.get(find(link.left)),
+        link.left,
+        link.right,
+        link.similarity,
+        link.contexts,
+      );
+    }
     db.exec(
       `UPDATE clusters SET tx_count=(SELECT count(DISTINCT a.txid) FROM addresses a JOIN cluster_members m ON m.address=a.address WHERE m.cluster_id=clusters.id)`,
     );
@@ -323,6 +493,7 @@ function analyze(
           ? "Isolation Forest"
           : "Rules only: fewer than 32 transactions",
         ruleVersion: RULE_VERSION,
+        graphEmbeddingLinks: acceptedEmbeddingLinks.length,
       },
       context,
     );
@@ -334,9 +505,17 @@ function analyze(
     throw error;
   } finally {
     db.exec(
-      "DROP TABLE IF EXISTS temp.features; DROP TABLE IF EXISTS temp.tx_bursts; DROP TABLE IF EXISTS temp.source_minutes;",
+      "DROP TABLE IF EXISTS temp.embedding_contexts; DROP TABLE IF EXISTS temp.features; DROP TABLE IF EXISTS temp.tx_bursts; DROP TABLE IF EXISTS temp.source_minutes;",
     );
   }
 }
 
-module.exports = { analyze, vector, reasonsFor, RULE_VERSION, FEATURE_NAMES };
+module.exports = {
+  analyze,
+  vector,
+  reasonsFor,
+  cosineSimilarity,
+  GRAPH_EMBEDDING,
+  RULE_VERSION,
+  FEATURE_NAMES,
+};
