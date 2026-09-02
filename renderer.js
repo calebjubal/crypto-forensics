@@ -444,7 +444,7 @@ async function leadsWorkspace() {
       '<button class="button" data-action="export-json">Export JSON</button><button class="button" data-action="export-csv">Export CSV</button><button class="button button-primary" data-action="analyze">Re-run analysis</button>',
     ) +
     staleNotice() +
-    `<section class="lead-map-layout"><aside class="map-lead-panel panel"><div class="map-lead-toolbar"><label class="search"><span class="screen-reader">Search priority leads</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, wallet, or IP…"></label><div class="map-lead-filters"><select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((value) => `<option ${state.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div></div><div class="map-lead-results"><div class="loading">Loading flag list…</div></div></aside><section class="transaction-map-panel" aria-label="Transaction world map"><div class="transaction-map-head"><div><span class="eyebrow">FULL CASE CONTEXT</span><h2>Transaction routes</h2><p id="map-caption">Loading offline city correlations…</p></div><button class="map-clear button button-small" data-map-clear hidden>Clear focus</button></div><div id="map-stats" class="map-stats" aria-live="polite"></div><div class="transaction-map-stage"><div id="transaction-map" class="transaction-map" role="img" aria-label="World map of aggregated transaction observations"></div><div id="map-empty" class="map-empty" hidden></div></div><div class="transaction-map-legend"><span><i class="map-key dotted"></i>Aggregated transaction route</span><span><i class="map-key solid"></i>Selected lead path</span><span><i class="map-key wallet"></i>Cluster-colored wallet</span></div><div class="map-status"><span id="map-selection">Select a lead to reveal its IP, transaction, and wallet path.</span><span id="map-attribution"></span></div></section></section>`;
+    `<section class="lead-map-layout"><aside class="map-lead-panel panel"><div class="map-lead-toolbar"><label class="search"><span class="screen-reader">Search priority leads</span><input id="search-input" type="text" value="${esc(state.search)}" placeholder="Search TXID, wallet, or IP…"></label><div class="map-lead-filters"><select id="priority-filter" aria-label="Filter priority">${["All priorities", "Critical", "High", "Medium"].map((value) => `<option ${state.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select><select id="status-filter" aria-label="Filter status">${["All statuses", "New", "In review", "Escalated", "Dismissed"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div></div><div class="map-lead-results"><div class="loading">Loading flag list…</div></div></aside><section class="transaction-map-panel" aria-label="Transaction world map"><div class="transaction-map-head"><div><span class="eyebrow">FULL CASE CONTEXT</span><h2>Transaction routes</h2><p id="map-caption">Loading offline city correlations…</p></div><button class="map-clear button button-small" data-map-clear hidden>Clear focus</button></div><div id="map-stats" class="map-stats" aria-live="polite"></div><div class="transaction-map-stage"><div id="transaction-map" class="transaction-map" role="img" aria-label="Interactive world map of transaction observations. Drag to move and use the mouse wheel or controls to zoom."></div><div class="map-navigation" role="group" aria-label="Map navigation"><button type="button" data-map-zoom="in" aria-label="Zoom in" title="Zoom in">+</button><button type="button" data-map-zoom="out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-map-zoom="reset" aria-label="Reset map view" title="Reset map view">Reset</button></div><div id="map-empty" class="map-empty" hidden></div></div><div class="transaction-map-legend"><span><i class="map-key dotted"></i>Aggregated transaction route</span><span><i class="map-key solid"></i>Selected lead path</span><span><i class="map-key wallet"></i>Cluster-colored wallet</span><span>Drag to move · wheel or pinch to zoom</span></div><div class="map-status"><span id="map-selection">Select a lead to show only its IP, transaction, and wallet path. Select it again to restore all routes.</span><span id="map-attribution"></span></div></section></section>`;
   await refreshMapLeadList();
   await loadMapOverview();
 }
@@ -684,7 +684,10 @@ function destroyMapGraph() {
   state.mapViewAnimation?.cancel?.();
   state.mapViewAnimation = null;
   const container = document.getElementById("transaction-map");
-  if (container) container.style.transform = "";
+  if (container) {
+    container.style.backgroundPosition = "";
+    container.style.backgroundSize = "";
+  }
   state.mapGraph?.destroy();
   state.mapGraph = null;
   state.mapOverview = null;
@@ -752,25 +755,42 @@ function positionMapGraph() {
     });
   });
 }
+function syncMapBackground() {
+  const graph = state.mapGraph,
+    container = document.getElementById("transaction-map");
+  if (!graph || !container) return;
+  const zoom = graph.zoom(),
+    pan = graph.pan();
+  container.style.backgroundSize = `${container.clientWidth * zoom}px ${container.clientHeight * zoom}px`;
+  container.style.backgroundPosition = `${pan.x}px ${pan.y}px`;
+}
 function setMapViewport({ x = 0, y = 0, scale = 1 }, animated = true) {
-  const container = document.getElementById("transaction-map");
-  if (!container) return;
+  const graph = state.mapGraph;
+  if (!graph) return;
   state.mapViewAnimation?.cancel?.();
   state.mapViewAnimation = null;
   if (reducedMotion || !animated || !window.anime?.animate) {
-    container.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    graph.viewport({ zoom: scale, pan: { x, y } });
+    syncMapBackground();
     return;
   }
-  const animation = window.anime.animate(container, {
-    translateX: x,
-    translateY: y,
-    scale,
-    duration: 620,
-    ease: "outCubic",
-    onComplete: () => {
-      if (state.mapViewAnimation === animation) state.mapViewAnimation = null;
-    },
-  });
+  const pan = graph.pan(),
+    viewport = { x: pan.x, y: pan.y, scale: graph.zoom() },
+    animation = window.anime.animate(viewport, {
+      x,
+      y,
+      scale,
+      duration: 620,
+      ease: "outCubic",
+      onUpdate: () =>
+        graph.viewport({
+          zoom: viewport.scale,
+          pan: { x: viewport.x, y: viewport.y },
+        }),
+      onComplete: () => {
+        if (state.mapViewAnimation === animation) state.mapViewAnimation = null;
+      },
+    });
   state.mapViewAnimation = animation;
 }
 function focusMapViewport(animated = true) {
@@ -804,6 +824,33 @@ function focusMapViewport(animated = true) {
 function resizeMapGraph() {
   positionMapGraph();
   if (state.selectedLead) focusMapViewport(false);
+  else syncMapBackground();
+}
+function controlMapViewport(action) {
+  const graph = state.mapGraph,
+    container = document.getElementById("transaction-map");
+  if (!graph || !container) return;
+  if (action === "reset") {
+    if (state.selectedLead) focusMapViewport(true);
+    else setMapViewport({}, true);
+    return;
+  }
+  const currentZoom = graph.zoom(),
+    targetZoom = Math.max(
+      graph.minZoom(),
+      Math.min(graph.maxZoom(), currentZoom * (action === "in" ? 1.25 : 0.8)),
+    ),
+    center = { x: container.clientWidth / 2, y: container.clientHeight / 2 },
+    pan = graph.pan(),
+    ratio = targetZoom / currentZoom;
+  setMapViewport(
+    {
+      x: center.x - (center.x - pan.x) * ratio,
+      y: center.y - (center.y - pan.y) * ratio,
+      scale: targetZoom,
+    },
+    true,
+  );
 }
 function renderMapOverview(data) {
   const container = document.getElementById("transaction-map"),
@@ -867,8 +914,11 @@ function renderMapOverview(data) {
     container,
     elements,
     layout: { name: "preset", fit: false },
-    userPanningEnabled: false,
-    userZoomingEnabled: false,
+    userPanningEnabled: true,
+    userZoomingEnabled: true,
+    minZoom: 0.75,
+    maxZoom: 4,
+    wheelSensitivity: 0.18,
     boxSelectionEnabled: false,
     autoungrabify: true,
     style: [
@@ -910,10 +960,7 @@ function renderMapOverview(data) {
           "z-index": 2,
         },
       },
-      {
-        selector: ".dimmed",
-        style: { opacity: 0.14 },
-      },
+      { selector: ".overview-hidden", style: { display: "none" } },
       {
         selector: 'node[kind = "endpoint"]',
         style: {
@@ -1007,6 +1054,8 @@ function renderMapOverview(data) {
     ],
   });
   positionMapGraph();
+  setMapViewport({}, false);
+  state.mapGraph.on("viewport", syncMapBackground);
   state.mapResizeObserver = new ResizeObserver(resizeMapGraph);
   state.mapResizeObserver.observe(container);
   state.mapGraph.on("tap", "node,edge", (event) => {
@@ -1015,13 +1064,13 @@ function renderMapOverview(data) {
   state.mapGraph.on("tap", (event) => {
     if (event.target === state.mapGraph && !state.selectedLead)
       status.textContent =
-        "Select a lead to reveal its IP, transaction, and wallet path.";
+        "Select a lead to show only its IP, transaction, and wallet path. Select it again to restore all routes.";
   });
 }
 function clearMapFocus() {
   state.selectedLead = null;
   state.mapGraph?.elements(".focus").remove();
-  state.mapGraph?.elements(".overview").removeClass("dimmed");
+  state.mapGraph?.elements(".overview").removeClass("overview-hidden");
   setMapViewport({}, true);
   document
     .querySelectorAll(".map-lead-card")
@@ -1034,13 +1083,13 @@ function clearMapFocus() {
   const status = document.getElementById("map-selection");
   if (status)
     status.textContent =
-      "Select a lead to reveal its IP, transaction, and wallet path.";
+      "All case routes restored. Select a lead to show only its path.";
 }
 function renderLeadFocus(data) {
   const graph = state.mapGraph;
   if (!graph) return;
   graph.elements(".focus").remove();
-  graph.elements(".overview").addClass("dimmed");
+  graph.elements(".overview").addClass("overview-hidden");
   const transactionId = "focus:transaction",
     elements = [
       {
@@ -1140,10 +1189,14 @@ function renderLeadFocus(data) {
     clear = document.querySelector("[data-map-clear]");
   if (clear) clear.hidden = false;
   if (status)
-    status.textContent = `${data.transaction.priority || "Flagged"} lead selected · map focused on its path · ${num(data.totals.endpoints)} unique IP endpoints · ${num(data.totals.wallets)} wallets${data.totals.countryConflicts ? ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches` : ""}${data.totals.endpoints > data.totals.renderedEndpoints || data.totals.wallets > data.totals.renderedWallets ? " · overflow collapsed into count nodes" : ""}`;
+    status.textContent = `${data.transaction.priority || "Flagged"} lead selected · overview routes hidden · select this lead again to restore all · ${num(data.totals.endpoints)} unique IP endpoints · ${num(data.totals.wallets)} wallets${data.totals.countryConflicts ? ` · ${num(data.totals.countryConflicts)} supplied/derived country mismatches` : ""}${data.totals.endpoints > data.totals.renderedEndpoints || data.totals.wallets > data.totals.renderedWallets ? " · overflow collapsed into count nodes" : ""}`;
 }
 async function selectMapLead(txid) {
   if (!txid || !state.mapGraph) return;
+  if (state.selectedLead === txid) {
+    clearMapFocus();
+    return;
+  }
   state.selectedLead = txid;
   document
     .querySelectorAll(".map-lead-card")
@@ -1546,6 +1599,7 @@ main.addEventListener("click", (e) => {
     a = e.target.closest("[data-action]")?.dataset.action,
     tx = e.target.closest("[data-tx]")?.dataset.tx,
     mapLead = e.target.closest("[data-map-lead]")?.dataset.mapLead,
+    mapZoom = e.target.closest("[data-map-zoom]")?.dataset.mapZoom,
     c = e.target.closest("[data-cluster]")?.dataset.cluster,
     errors = e.target.closest("[data-errors]"),
     remove = e.target.closest("[data-delete-import]"),
@@ -1556,6 +1610,7 @@ main.addEventListener("click", (e) => {
   else if (a) action(a);
   else if (tx) openTx(tx);
   else if (mapLead) selectMapLead(mapLead);
+  else if (mapZoom) controlMapViewport(mapZoom);
   else if (c) openCluster(c);
   else if (errors) openErrors(errors.dataset.errors, errors.dataset.name);
   else if (remove) removeImport(remove.dataset.deleteImport);
