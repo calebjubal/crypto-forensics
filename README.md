@@ -38,6 +38,17 @@ Satoshi Trace is a desktop tool for examining Bitcoin transaction records togeth
 - Explore possible wallet groups through interactive entity graphs.
 - Review, annotate, and export prioritized leads as JSON or formula-safe CSV.
 
+## How network and blockchain data are correlated
+
+Each imported record contains both sides of the observation:
+
+- **Network layer:** source and destination IPs, ports, timestamp, and supplied country and/or ASN metadata.
+- **Blockchain layer:** transaction ID (`txid`), input and output wallets, and BTC amounts.
+
+Satoshi Trace uses the `txid` as the shared key between these layers. During import, it validates and normalizes the fields, stores each network observation with its source-file provenance, and groups every observation carrying the same `txid` with that transaction's wallets and amounts. This makes it possible to compare when and where a transaction was observed, follow its wallet flow, and display the combined relationship in lead details, graphs, and the world map.
+
+This correlation shows that an IP observation and transaction ID appeared together in the supplied evidence. It does not, by itself, prove that the IP owner controls a wallet or created the transaction.
+
 ## Quick start
 
 1. Download the correct installer from [GitHub Releases](https://github.com/calebjubal/crypto-forensics/releases).
