@@ -60,11 +60,37 @@ function openDatabase(file) {
       left_address TEXT NOT NULL, right_address TEXT NOT NULL, similarity REAL NOT NULL,
       shared_contexts INTEGER NOT NULL, PRIMARY KEY(cluster_id,left_address,right_address));
     CREATE INDEX IF NOT EXISTS embedding_links_cluster ON cluster_embedding_links(cluster_id);
+    CREATE TABLE IF NOT EXISTS flow_patterns(id TEXT PRIMARY KEY,type TEXT NOT NULL,confidence INTEGER NOT NULL,
+      anomaly REAL,tx_count INTEGER NOT NULL,wallet_count INTEGER NOT NULL,total_sat INTEGER NOT NULL,
+      first_ms INTEGER NOT NULL,last_ms INTEGER NOT NULL,duration_ms INTEGER NOT NULL,
+      continuation_consistency REAL NOT NULL,equal_output_concentration REAL NOT NULL,branching REAL NOT NULL,
+      details TEXT NOT NULL,run_id TEXT NOT NULL REFERENCES analysis_runs(id));
+    CREATE INDEX IF NOT EXISTS flow_patterns_rank ON flow_patterns(type,confidence DESC,id);
+    CREATE TABLE IF NOT EXISTS flow_pattern_members(pattern_id TEXT NOT NULL REFERENCES flow_patterns(id),
+      txid TEXT NOT NULL REFERENCES transactions(txid),position INTEGER NOT NULL,role TEXT NOT NULL,
+      PRIMARY KEY(pattern_id,txid));
+    CREATE INDEX IF NOT EXISTS flow_members_tx ON flow_pattern_members(txid,pattern_id);
+    CREATE TABLE IF NOT EXISTS exact_flow_links(source_txid TEXT NOT NULL REFERENCES transactions(txid),
+      destination_txid TEXT NOT NULL REFERENCES transactions(txid),address TEXT NOT NULL,amount_sat INTEGER NOT NULL,
+      output_position INTEGER NOT NULL,input_position INTEGER NOT NULL,run_id TEXT NOT NULL REFERENCES analysis_runs(id),
+      PRIMARY KEY(source_txid,output_position,destination_txid,input_position));
+    CREATE INDEX IF NOT EXISTS exact_flow_links_destination ON exact_flow_links(destination_txid,source_txid);
+    CREATE TABLE IF NOT EXISTS automatic_pattern_seeds(pattern_id TEXT NOT NULL REFERENCES flow_patterns(id),
+      address TEXT NOT NULL,risk REAL NOT NULL,final_txid TEXT NOT NULL REFERENCES transactions(txid),
+      run_id TEXT NOT NULL REFERENCES analysis_runs(id),PRIMARY KEY(pattern_id,address));
+    CREATE TABLE IF NOT EXISTS wallet_risk(address TEXT PRIMARY KEY,risk REAL NOT NULL,hops INTEGER NOT NULL,
+      seed_address TEXT NOT NULL,seed_pattern_id TEXT NOT NULL REFERENCES flow_patterns(id),path TEXT NOT NULL,
+      run_id TEXT NOT NULL REFERENCES analysis_runs(id));
+    CREATE INDEX IF NOT EXISTS wallet_risk_rank ON wallet_risk(risk DESC,address);
+    CREATE TABLE IF NOT EXISTS transaction_risk(txid TEXT PRIMARY KEY REFERENCES transactions(txid),risk REAL NOT NULL,
+      boost INTEGER NOT NULL,hops INTEGER NOT NULL,seed_pattern_id TEXT NOT NULL REFERENCES flow_patterns(id),
+      path TEXT NOT NULL,run_id TEXT NOT NULL REFERENCES analysis_runs(id));
+    CREATE INDEX IF NOT EXISTS transaction_risk_rank ON transaction_risk(risk DESC,txid);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS audit_timestamp ON audit(timestamp DESC);
     CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY COLLATE NOCASE, salt TEXT NOT NULL,
       password_hash TEXT NOT NULL, created TEXT NOT NULL, last_login TEXT);
-    UPDATE metadata SET value='2' WHERE key='schema_version' AND CAST(value AS INTEGER)<2;`);
+    UPDATE metadata SET value='3' WHERE key='schema_version' AND CAST(value AS INTEGER)<3;`);
   return db;
 }
 
@@ -340,6 +366,12 @@ function deleteImport(db, id, context = {}) {
       .prepare("SELECT count(*) AS count FROM orphan_transactions")
       .get().count;
     db.exec(`DELETE FROM lead_scores;
+      DELETE FROM transaction_risk;
+      DELETE FROM wallet_risk;
+      DELETE FROM automatic_pattern_seeds;
+      DELETE FROM flow_pattern_members;
+      DELETE FROM exact_flow_links;
+      DELETE FROM flow_patterns;
       DELETE FROM cluster_embedding_links;
       DELETE FROM cluster_members;
       DELETE FROM clusters;
@@ -431,7 +463,7 @@ function page(db, type, options = {}) {
     where = [],
     order;
   if (type === "transactions" || type === "leads") {
-    select = `FROM transactions t LEFT JOIN lead_scores l ON l.txid=t.txid LEFT JOIN lead_reviews r ON r.txid=t.txid`;
+    select = `FROM transactions t LEFT JOIN lead_scores l ON l.txid=t.txid LEFT JOIN lead_reviews r ON r.txid=t.txid LEFT JOIN transaction_risk tr ON tr.txid=t.txid`;
     if (type === "leads") where.push("l.score>=25");
     if (search) {
       where.push(
@@ -456,6 +488,8 @@ function page(db, type, options = {}) {
     const rows = db
       .prepare(
         `SELECT t.txid,t.output_sat,t.fee_sat,t.coinjoin,l.score,l.priority,l.category,l.anomaly,l.reasons,
+      coalesce(tr.risk,0) AS exposure_risk,coalesce(tr.boost,0) AS risk_boost,
+      (SELECT group_concat(type,',') FROM (SELECT DISTINCT p.type FROM flow_patterns p JOIN flow_pattern_members pm ON pm.pattern_id=p.id WHERE pm.txid=t.txid ORDER BY p.type)) AS pattern_types,
       coalesce(r.status,'New') AS status,(SELECT min(timestamp) FROM observations o WHERE o.txid=t.txid) AS timestamp,
       (SELECT count(*) FROM observations o WHERE o.txid=t.txid) AS observations,
       (SELECT src_ip FROM observations o WHERE o.txid=t.txid ORDER BY ts_ms,id LIMIT 1) AS src_ip
@@ -508,7 +542,11 @@ function page(db, type, options = {}) {
 function detail(db, txid) {
   const transaction = db
     .prepare(
-      "SELECT t.*,l.score,l.priority,l.category,l.reasons,l.features,l.anomaly,l.run_id FROM transactions t LEFT JOIN lead_scores l ON l.txid=t.txid WHERE t.txid=?",
+      `SELECT t.*,l.score,l.priority,l.category,l.reasons,l.features,l.anomaly,l.run_id,
+       coalesce(tr.risk,0) AS exposure_risk,coalesce(tr.boost,0) AS risk_boost,tr.hops AS risk_hops,
+       tr.seed_pattern_id,tr.path AS risk_path
+       FROM transactions t LEFT JOIN lead_scores l ON l.txid=t.txid
+       LEFT JOIN transaction_risk tr ON tr.txid=t.txid WHERE t.txid=?`,
     )
     .get(txid);
   if (!transaction) throw new Error("Transaction not found.");
@@ -533,13 +571,200 @@ function detail(db, txid) {
   const review = db
     .prepare("SELECT * FROM lead_reviews WHERE txid=?")
     .get(txid) || { status: "New", notes: "" };
+  const flowPatterns = db
+    .prepare(
+      `SELECT p.id,p.type,p.confidence,p.anomaly,p.tx_count,p.wallet_count,pm.position,pm.role
+       FROM flow_pattern_members pm JOIN flow_patterns p ON p.id=pm.pattern_id
+       WHERE pm.txid=? ORDER BY p.confidence DESC,p.id`,
+    )
+    .all(txid);
+  if (transaction.risk_path) transaction.risk_path = JSON.parse(transaction.risk_path);
   return {
     transaction,
     observations,
     observationTotal: total,
     sources,
     clusters,
+    flowPatterns,
     review,
+  };
+}
+
+function flowOverview(db, options = {}) {
+  const offset = Math.max(0, Math.floor(Number(options.offset) || 0)),
+    limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit) || 25))),
+    search = String(options.search || "").slice(0, 200),
+    type = ["peeling", "mixing"].includes(options.type) ? options.type : "",
+    minConfidence = Math.max(0, Math.min(100, Number(options.minConfidence) || 0)),
+    minRisk = Math.max(0, Math.min(100, Number(options.minRisk) || 0)),
+    minAnomaly = Math.max(0, Math.min(1, Number(options.minAnomaly) || 0)),
+    where = ["p.confidence>=?", "coalesce(p.anomaly,0)>=?"],
+    params = [minConfidence, minAnomaly];
+  if (type) {
+    where.push("p.type=?");
+    params.push(type);
+  }
+  if (minRisk) {
+    where.push(
+      "max(coalesce((SELECT max(risk) FROM transaction_risk tr WHERE tr.seed_pattern_id=p.id),0),coalesce((SELECT max(risk) FROM wallet_risk wr WHERE wr.seed_pattern_id=p.id),0))>=?",
+    );
+    params.push(minRisk);
+  }
+  if (search) {
+    where.push(`(p.id LIKE ? OR EXISTS(SELECT 1 FROM flow_pattern_members pm WHERE pm.pattern_id=p.id AND pm.txid LIKE ?)
+      OR EXISTS(SELECT 1 FROM automatic_pattern_seeds s WHERE s.pattern_id=p.id AND s.address LIKE ?))`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const clause = `WHERE ${where.join(" AND ")}`,
+    base = `FROM flow_patterns p ${clause}`,
+    total = db.prepare(`SELECT count(*) AS n ${base}`).get(...params).n,
+    rows = db
+      .prepare(
+        `SELECT p.*,
+        max(coalesce((SELECT max(risk) FROM transaction_risk tr WHERE tr.seed_pattern_id=p.id),0),coalesce((SELECT max(risk) FROM wallet_risk wr WHERE wr.seed_pattern_id=p.id),0)) AS max_risk,
+        (SELECT count(*) FROM automatic_pattern_seeds s WHERE s.pattern_id=p.id) AS seed_count
+        ${base} ORDER BY p.confidence DESC,coalesce(p.anomaly,-1) DESC,p.id LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset);
+  return {
+    rows,
+    total,
+    limit,
+    offset,
+    stats: {
+      peeling: db.prepare("SELECT count(*) AS n FROM flow_patterns WHERE type='peeling'").get().n,
+      mixing: db.prepare("SELECT count(*) AS n FROM flow_patterns WHERE type='mixing'").get().n,
+      coinjoinCautions: db.prepare("SELECT count(*) AS n FROM transactions WHERE coinjoin=1").get().n,
+      automaticSeeds: db.prepare("SELECT count(*) AS n FROM automatic_pattern_seeds").get().n,
+      exposedWallets: db.prepare("SELECT count(*) AS n FROM wallet_risk").get().n,
+    },
+  };
+}
+
+function flowDetail(db, id) {
+  const pattern = db.prepare("SELECT * FROM flow_patterns WHERE id=?").get(id);
+  if (!pattern) throw new Error("Flow pattern not found.");
+  pattern.details = JSON.parse(pattern.details);
+  const transactionLimit = 120,
+    walletLimit = 160,
+    edgeLimit = 600,
+    members = db
+      .prepare(
+        `SELECT pm.*,t.input_addresses,t.output_addresses,t.output_sat,t.coinjoin,
+         coalesce(tr.risk,0) AS exposure_risk,tr.boost AS risk_boost
+         FROM flow_pattern_members pm JOIN transactions t ON t.txid=pm.txid
+         LEFT JOIN transaction_risk tr ON tr.txid=pm.txid WHERE pm.pattern_id=?
+         ORDER BY pm.position LIMIT ?`,
+      )
+      .all(id, transactionLimit),
+    relatedRisk = db
+      .prepare(
+        `SELECT tr.txid,tr.risk,tr.boost,tr.hops,tr.path,t.input_addresses,t.output_addresses
+         FROM transaction_risk tr JOIN transactions t ON t.txid=tr.txid
+         WHERE tr.seed_pattern_id=? ORDER BY tr.risk DESC,tr.txid LIMIT ?`,
+      )
+      .all(id, Math.max(0, transactionLimit - members.length)),
+    transactionIds = [...new Set([...members.map((row) => row.txid), ...relatedRisk.map((row) => row.txid)])],
+    walletSet = new Set(),
+    patternWallets = new Set(),
+    nodes = [],
+    edges = [],
+    structuralEdgeTotal = db
+      .prepare(
+        "SELECT count(*) AS n FROM addresses a JOIN flow_pattern_members pm ON pm.txid=a.txid WHERE pm.pattern_id=?",
+      )
+      .get(id).n;
+  for (const member of members) {
+    nodes.push({ id: `tx:${member.txid}`, kind: "transaction", txid: member.txid, label: member.txid.slice(0, 10), risk: member.exposure_risk, role: member.role });
+    for (const address of [...JSON.parse(member.input_addresses), ...JSON.parse(member.output_addresses)])
+      patternWallets.add(address);
+  }
+  for (const address of patternWallets)
+    if (walletSet.size < 100) walletSet.add(address);
+  for (const risk of relatedRisk) {
+    if (!nodes.some((node) => node.txid === risk.txid))
+      nodes.push({ id: `tx:${risk.txid}`, kind: "transaction", txid: risk.txid, label: risk.txid.slice(0, 10), risk: risk.risk, role: "exposed" });
+    for (const address of [...JSON.parse(risk.input_addresses), ...JSON.parse(risk.output_addresses)])
+      if (walletSet.size < walletLimit) walletSet.add(address);
+  }
+  const wallets = [...walletSet].sort(),
+    walletRiskRows = wallets.length
+      ? db.prepare(`SELECT * FROM wallet_risk WHERE address IN (${wallets.map(() => "?").join(",")})`).all(...wallets)
+      : [],
+    walletRisks = new Map(walletRiskRows.map((row) => [row.address, row]));
+  for (const address of wallets) {
+    const risk = walletRisks.get(address);
+    nodes.push({ id: `wallet:${address}`, kind: "wallet", address, label: address.slice(0, 10), risk: risk?.risk || 0, hops: risk?.hops ?? null });
+  }
+  for (const member of members) {
+    for (const address of JSON.parse(member.input_addresses)) {
+      if (walletSet.has(address) && edges.length < Math.floor(edgeLimit * 0.6))
+        edges.push({ id: `in:${address}:${member.txid}`, source: `wallet:${address}`, target: `tx:${member.txid}`, kind: pattern.type });
+    }
+    for (const address of JSON.parse(member.output_addresses)) {
+      if (walletSet.has(address) && edges.length < Math.floor(edgeLimit * 0.6))
+        edges.push({ id: `out:${member.txid}:${address}`, source: `tx:${member.txid}`, target: `wallet:${address}`, kind: pattern.type });
+    }
+  }
+  const exactLinkTotal = transactionIds.length
+      ? db
+          .prepare(
+            `SELECT count(*) AS n FROM exact_flow_links WHERE source_txid IN (${transactionIds.map(() => "?").join(",")})
+             AND destination_txid IN (${transactionIds.map(() => "?").join(",")})`,
+          )
+          .get(...transactionIds, ...transactionIds).n
+      : 0,
+    exactLinks = transactionIds.length
+    ? db
+        .prepare(
+          `SELECT * FROM exact_flow_links WHERE source_txid IN (${transactionIds.map(() => "?").join(",")})
+           AND destination_txid IN (${transactionIds.map(() => "?").join(",")}) ORDER BY source_txid,destination_txid LIMIT ?`,
+        )
+        .all(...transactionIds, ...transactionIds, edgeLimit)
+    : [];
+  for (const link of exactLinks)
+    if (edges.length < Math.floor(edgeLimit * 0.75))
+      edges.push({ id: `flow:${link.source_txid}:${link.destination_txid}:${link.output_position}`, source: `tx:${link.source_txid}`, target: `tx:${link.destination_txid}`, kind: pattern.type, amountSat: link.amount_sat });
+  const riskEdgeTotal = db
+    .prepare(
+      "SELECT coalesce(sum(CASE WHEN json_array_length(path)>1 THEN json_array_length(path)-1 ELSE 0 END),0) AS n FROM transaction_risk WHERE seed_pattern_id=?",
+    )
+    .get(id).n;
+  for (const risk of relatedRisk) {
+    const path = JSON.parse(risk.path);
+    for (let index = 0; index < path.length - 1 && edges.length < edgeLimit; index++) {
+      const left = path[index], right = path[index + 1];
+      if (right.kind === "spend" && walletSet.has(right.inputAddress))
+        edges.push({ id: `risk-in:${right.inputAddress}:${right.txid}`, source: `wallet:${right.inputAddress}`, target: `tx:${right.txid}`, kind: "risk", risk: right.risk });
+      if (right.kind === "output" && walletSet.has(right.address))
+        edges.push({ id: `risk-out:${right.txid}:${right.address}`, source: `tx:${right.txid}`, target: `wallet:${right.address}`, kind: "risk", risk: right.risk });
+    }
+  }
+  const riskWalletTotal = db
+      .prepare("SELECT count(*) AS n FROM wallet_risk WHERE seed_pattern_id=?")
+      .get(id).n,
+    overlappingRiskWallets = db
+      .prepare(
+        `SELECT count(*) AS n FROM wallet_risk wr WHERE wr.seed_pattern_id=? AND EXISTS(
+         SELECT 1 FROM addresses a JOIN flow_pattern_members pm ON pm.txid=a.txid
+         WHERE pm.pattern_id=? AND a.address=wr.address)`,
+      )
+      .get(id, id).n;
+  const transactionTotal = pattern.tx_count + db.prepare("SELECT count(*) AS n FROM transaction_risk WHERE seed_pattern_id=? AND txid NOT IN (SELECT txid FROM flow_pattern_members WHERE pattern_id=?)").get(id,id).n,
+    walletTotal = pattern.wallet_count + riskWalletTotal - overlappingRiskWallets,
+    edgeTotal = structuralEdgeTotal + exactLinkTotal + riskEdgeTotal,
+    renderedEdges = [...new Map(edges.map((edge) => [edge.id, edge])).values()].slice(0, edgeLimit);
+  if (transactionTotal > transactionIds.length)
+    nodes.push({ id: "overflow:transactions", kind: "overflow", label: `+${transactionTotal - transactionIds.length} transactions` });
+  if (walletTotal > wallets.length)
+    nodes.push({ id: "overflow:wallets", kind: "overflow", label: `+${walletTotal - wallets.length} wallets` });
+  if (edgeTotal > renderedEdges.length)
+    nodes.push({ id: "overflow:edges", kind: "overflow", label: `+${edgeTotal - renderedEdges.length} links` });
+  return {
+    pattern,
+    members: members.map(({ input_addresses, output_addresses, ...row }) => row),
+    seeds: db.prepare("SELECT * FROM automatic_pattern_seeds WHERE pattern_id=? ORDER BY risk DESC,address").all(id),
+    graph: { nodes, edges: renderedEdges, transactionTotal, walletTotal, edgeTotal, renderedEdgeTotal: renderedEdges.length, transactionLimit, walletLimit, edgeLimit },
   };
 }
 
@@ -633,6 +858,8 @@ module.exports = {
   page,
   detail,
   clusterDetail,
+  flowOverview,
+  flowDetail,
   review,
   audit,
   authenticationStatus,

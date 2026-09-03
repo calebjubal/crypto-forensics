@@ -44,6 +44,12 @@ const state = {
   selectedTx: null,
   selectedLead: null,
   clusterGraph: null,
+  flowGraph: null,
+  selectedFlow: null,
+  flowType: "",
+  flowConfidence: 0,
+  flowRisk: 0,
+  flowAnomaly: 0,
   mapGraph: null,
   mapOverview: null,
   mapResizeObserver: null,
@@ -59,6 +65,7 @@ const routes = [
   ["evidence", "Evidence imports", "database"],
   ["transactions", "Transactions", "transaction"],
   ["clusters", "Entity clusters", "cluster"],
+  ["flows", "Flow analysis", "flow"],
   ["leads", "Priority leads", "flag"],
   ["activity", "Activity log", "audit"],
   ["methodology", "Methodology", "shield"],
@@ -72,6 +79,7 @@ const icons = {
   transaction: '<path d="M4 7h15M15 3l4 4-4 4M20 17H5M9 13l-4 4 4 4"/>',
   cluster:
     '<circle cx="5" cy="12" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="19" cy="18" r="3"/><path d="M8 11l8-4M8 13l8 4"/>',
+  flow: '<path d="M4 5h7v5H4zM13 14h7v5h-7zM11 7h3a4 4 0 014 4v3M13 17h-3a4 4 0 01-4-4v-3"/>',
   flag: '<path d="M5 21V4m0 1h12l-2 4 2 4H5"/>',
   shield:
     '<path d="M12 22s8-3.4 8-10V5l-8-3-8 3v7c0 6.6 8 10 8 10zM9 12l2 2 4-5"/>',
@@ -363,7 +371,7 @@ function pager(d, type) {
 }
 function leadTable(d) {
   if (!d.rows.length) return empty("priority leads");
-  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>PRIORITY</th><th>TRANSACTION / FIRST OBSERVED</th><th>CATEGORY</th><th>FIRST SOURCE IP</th><th>SCORE</th><th>STATUS</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${badge(r.priority)}</td><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 24))}</button><small>${date(r.timestamp)}</small></td><td>${esc(r.category)}<small>${r.coinjoin ? "Collaborative caution" : ""}</small></td><td class="mono">${esc(r.src_ip)}</td><td class="score">${r.score}<span>/100</span><small class="score-detail" title="Raw Isolation Forest anomaly score; relative unusualness, not risk probability">Anomaly ${r.anomaly === null ? "—" : Number(r.anomaly).toFixed(3)}</small></td><td class="status-label">${esc(r.status)}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Inspect →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} leads</span>${pager(d, "leads")}</div>`;
+  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>PRIORITY</th><th>TRANSACTION / FIRST OBSERVED</th><th>CATEGORY</th><th>EXPOSURE</th><th>SCORE</th><th>STATUS</th><th></th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${badge(r.priority)}</td><td><button class="tx-link" data-tx="${esc(r.txid)}">${esc(trunc(r.txid, 24))}</button><small>${date(r.timestamp)}</small></td><td>${esc(r.category)}<small>${r.pattern_types ? esc(r.pattern_types.replaceAll(",", " · ")) : r.coinjoin ? "CoinJoin-like caution" : ""}</small></td><td>${Number(r.exposure_risk) ? `<span class="risk-badge">${Number(r.exposure_risk).toFixed(1)}</span><small>+${r.risk_boost} score</small>` : '<span class="muted">None</span>'}</td><td class="score">${r.score}<span>/100</span><small class="score-detail" title="Raw Isolation Forest anomaly score; relative unusualness, not risk probability">Anomaly ${r.anomaly === null ? "—" : Number(r.anomaly).toFixed(3)}</small></td><td class="status-label">${esc(r.status)}</td><td><button class="link-button" data-tx="${esc(r.txid)}">Inspect →</button></td></tr>`).join("")}</tbody></table></div><div class="table-footer"><span>Showing ${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)} leads</span>${pager(d, "leads")}</div>`;
 }
 function txTable(d) {
   if (!d.rows.length) return empty("transactions");
@@ -413,7 +421,7 @@ function mapLeadList(d) {
   return `<div class="map-lead-list" role="listbox" aria-label="Priority leads">${d.rows
     .map(
       (row) =>
-        `<article class="map-lead-card ${state.selectedLead === row.txid ? "selected" : ""}" role="option" tabindex="0" aria-selected="${state.selectedLead === row.txid}" data-map-lead="${esc(row.txid)}"><div class="map-lead-card-top">${badge(row.priority)}<span class="map-lead-score">${row.score}<small>/100</small></span></div><strong class="mono" title="${esc(row.txid)}">${esc(trunc(row.txid, 28))}</strong><p>${esc(row.category)} · ${date(row.timestamp)}</p><div class="map-lead-card-bottom"><span class="mono">${esc(row.src_ip || "No source IP")}</span><span>${esc(row.status)}</span><button class="link-button" data-tx="${esc(row.txid)}">Inspect →</button></div></article>`,
+        `<article class="map-lead-card ${state.selectedLead === row.txid ? "selected" : ""}" role="option" tabindex="0" aria-selected="${state.selectedLead === row.txid}" data-map-lead="${esc(row.txid)}"><div class="map-lead-card-top">${badge(row.priority)}<span class="map-lead-score">${row.score}<small>/100</small></span></div><strong class="mono" title="${esc(row.txid)}">${esc(trunc(row.txid, 28))}</strong><p>${esc(row.category)} · ${date(row.timestamp)}</p>${row.pattern_types || Number(row.exposure_risk) ? `<div class="lead-signal-row">${row.pattern_types ? `<span>${esc(row.pattern_types.replaceAll(",", " · "))}</span>` : ""}${Number(row.exposure_risk) ? `<span class="risk-badge">Risk ${Number(row.exposure_risk).toFixed(1)}</span>` : ""}</div>` : ""}<div class="map-lead-card-bottom"><span class="mono">${esc(row.src_ip || "No source IP")}</span><span>${esc(row.status)}</span><button class="link-button" data-tx="${esc(row.txid)}">Inspect →</button></div></article>`,
     )
     .join("")}</div><div class="map-lead-pagination"><span>${d.offset + 1}–${Math.min(d.total, d.offset + d.rows.length)} of ${num(d.total)}</span>${pager(d, "leads-map")}</div>`;
 }
@@ -570,6 +578,187 @@ async function refreshClusters() {
     fail(e);
   }
 }
+function destroyFlowGraph() {
+  state.flowGraph?.destroy();
+  state.flowGraph = null;
+}
+function flowSummary(stats) {
+  return `<section class="flow-summary" aria-label="Flow analysis summary"><article><strong>${num(stats.peeling)}</strong><span>Peeling chains</span><i class="flow-dot peel"></i></article><article><strong>${num(stats.coinjoinCautions)}</strong><span>CoinJoin-like cautions</span><i class="flow-dot caution"></i></article><article><strong>${num(stats.mixing)}</strong><span>Mixing cascades</span><i class="flow-dot mix"></i></article><article><strong>${num(stats.automaticSeeds)}</strong><span>Automatic seeds</span><i class="flow-dot seed"></i></article><article><strong>${num(stats.exposedWallets)}</strong><span>Exposed wallets</span><i class="flow-dot risk"></i></article></section>`;
+}
+function flowList(data) {
+  if (!data.rows.length)
+    return '<div class="map-list-empty">No flow patterns match these filters.</div>';
+  return `<div class="flow-pattern-list" role="listbox" aria-label="Detected flow patterns">${data.rows
+    .map(
+      (row) =>
+        `<button class="flow-pattern-card ${state.selectedFlow === row.id ? "selected" : ""}" type="button" role="option" aria-selected="${state.selectedFlow === row.id}" data-flow-pattern="${esc(row.id)}"><span class="flow-pattern-line"><b class="flow-type ${esc(row.type)}">${row.type === "peeling" ? "PEELING CHAIN" : "MIXING CASCADE"}</b><strong>${row.confidence}<small>/100</small></strong></span><span class="mono">${esc(row.id)}</span><span class="flow-pattern-meta"><i>${num(row.tx_count)} transactions</i><i>${num(row.wallet_count)} wallets</i><i>${row.anomaly === null ? "Structural score" : `Anomaly ${Number(row.anomaly).toFixed(3)}`}</i></span>${Number(row.max_risk) ? `<span class="flow-risk-line">Maximum propagated exposure <b>${Number(row.max_risk).toFixed(1)}</b></span>` : ""}</button>`,
+    )
+    .join("")}</div><div class="map-lead-pagination"><span>${data.offset + 1}–${Math.min(data.total, data.offset + data.rows.length)} of ${num(data.total)}</span>${pager(data, "flows")}</div>`;
+}
+function renderFlowGraph(detail) {
+  destroyFlowGraph();
+  const container = document.getElementById("flow-graph"),
+    caption = document.getElementById("flow-graph-caption"),
+    nodeList = document.getElementById("flow-node-list");
+  if (!container || !window.cytoscape) return;
+  const elements = [
+    ...detail.graph.nodes.map((node) => ({ data: node })),
+    ...detail.graph.edges.map((edge) => ({ data: edge })),
+  ];
+  state.flowGraph = window.cytoscape({
+    container,
+    elements,
+    minZoom: 0.2,
+    maxZoom: 3.5,
+    wheelSensitivity: 0.18,
+    boxSelectionEnabled: false,
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          color: "#dbeafe",
+          "font-size": 8,
+          "text-valign": "center",
+          "text-halign": "center",
+          "text-outline-color": "#071a33",
+          "text-outline-width": 2,
+          width: 30,
+          height: 30,
+          "background-color": "#5f9fea",
+          "border-color": "#dbeafe",
+          "border-width": 2,
+        },
+      },
+      {
+        selector: 'node[kind = "transaction"]',
+        style: { shape: "round-rectangle", width: 48, height: 27, "background-color": "#183a5e" },
+      },
+      {
+        selector: 'node[kind = "wallet"]',
+        style: { shape: "ellipse", width: 25, height: 25, "background-color": "#6b7f99" },
+      },
+      {
+        selector: 'node[kind = "overflow"]',
+        style: { shape: "round-rectangle", width: 92, height: 25, "background-color": "#42536a", "border-style": "dashed" },
+      },
+      {
+        selector: "node[risk > 0]",
+        style: { "border-color": "#ef4444", "border-width": 3 },
+      },
+      {
+        selector: "edge",
+        style: {
+          width: 2,
+          opacity: 0.82,
+          "curve-style": "bezier",
+          "target-arrow-shape": "triangle",
+          "arrow-scale": 0.7,
+          "line-color": "#f59e0b",
+          "target-arrow-color": "#f59e0b",
+        },
+      },
+      {
+        selector: 'edge[kind = "mixing"]',
+        style: { "line-style": "dashed", "line-color": "#a78bfa", "target-arrow-color": "#a78bfa" },
+      },
+      {
+        selector: 'edge[kind = "risk"]',
+        style: { width: "mapData(risk, 0, 100, 2, 8)", "line-style": "solid", "line-color": "#ef4444", "target-arrow-color": "#ef4444", "z-index": 10 },
+      },
+      { selector: ":selected", style: { "overlay-color": "#7dd3fc", "overlay-opacity": 0.2, "overlay-padding": 7 } },
+    ],
+    layout: { name: "breadthfirst", directed: true, spacingFactor: 1.05, padding: 30, fit: false },
+  });
+  const fit = () =>
+    reducedMotion
+      ? state.flowGraph.fit(undefined, 35)
+      : state.flowGraph.animate({ fit: { eles: state.flowGraph.elements(), padding: 35 }, duration: 480 });
+  requestAnimationFrame(fit);
+  state.flowGraph.on("tap", "node", (event) => {
+    const node = event.target;
+    caption.textContent =
+      node.data("kind") === "transaction"
+        ? `Transaction ${node.data("txid")} · exposure ${Number(node.data("risk") || 0).toFixed(1)} · double-click to inspect evidence`
+        : node.data("kind") === "wallet"
+          ? `Wallet ${node.data("address")} · exposure ${Number(node.data("risk") || 0).toFixed(1)}`
+          : node.data("label");
+  });
+  state.flowGraph.on("dbltap", 'node[kind = "transaction"]', (event) =>
+    openTx(event.target.data("txid")),
+  );
+  nodeList.innerHTML = detail.graph.nodes
+    .filter((node) => node.kind !== "overflow")
+    .map(
+      (node) => `<button type="button" data-flow-node="${esc(node.id)}">${node.kind === "transaction" ? "Transaction" : "Wallet"} ${esc(node.label)}${Number(node.risk) ? ` · risk ${Number(node.risk).toFixed(1)}` : ""}</button>`,
+    )
+    .join("");
+}
+async function selectFlowPattern(id) {
+  state.selectedFlow = id;
+  document.querySelectorAll("[data-flow-pattern]").forEach((card) => {
+    const selected = card.dataset.flowPattern === id;
+    card.classList.toggle("selected", selected);
+    card.setAttribute("aria-selected", String(selected));
+  });
+  try {
+    const detail = await api.flowDetail({ id }),
+      p = detail.pattern,
+      panel = document.getElementById("flow-graph-panel");
+    panel.querySelector(".flow-graph-title").textContent = p.id;
+    panel.querySelector(".flow-graph-subtitle").textContent = `${p.type === "peeling" ? "Peeling chain" : "Mixing cascade"} · ${p.tx_count} transactions · confidence ${p.confidence}/100${p.anomaly === null ? " · flow anomaly unavailable (<32 patterns)" : ` · anomaly ${Number(p.anomaly).toFixed(3)}`}`;
+    panel.querySelector(".flow-graph-overflow").textContent =
+      detail.graph.transactionTotal > detail.graph.transactionLimit ||
+      detail.graph.walletTotal > detail.graph.walletLimit ||
+      detail.graph.edgeTotal >= detail.graph.edgeLimit
+        ? `Responsive view limits: ${detail.graph.transactionLimit} transactions, ${detail.graph.walletLimit} wallets, ${detail.graph.edgeLimit} edges. Overflow is represented by count nodes.`
+        : "Complete detected pattern and strongest propagated exposure paths are shown.";
+    renderFlowGraph(detail);
+  } catch (error) {
+    fail(error);
+  }
+}
+async function refreshFlows() {
+  try {
+    const data = await api.flowOverview({
+      search: state.search,
+      type: state.flowType,
+      minConfidence: state.flowConfidence,
+      minRisk: state.flowRisk,
+      minAnomaly: state.flowAnomaly,
+      offset: state.offset,
+      limit: 20,
+    });
+    const summary = document.getElementById("flow-summary");
+    if (summary) summary.innerHTML = flowSummary(data.stats);
+    const results = document.querySelector(".flow-results");
+    if (results) results.innerHTML = flowList(data);
+    if (!state.selectedFlow && data.rows.length) await selectFlowPattern(data.rows[0].id);
+    else if (state.selectedFlow && data.rows.some((row) => row.id === state.selectedFlow))
+      await selectFlowPattern(state.selectedFlow);
+    else if (!data.rows.length) {
+      destroyFlowGraph();
+      const title = document.querySelector(".flow-graph-title");
+      if (title) title.textContent = "No pattern selected";
+    }
+  } catch (error) {
+    fail(error);
+  }
+}
+async function flows() {
+  destroyFlowGraph();
+  state.selectedFlow = null;
+  main.innerHTML =
+    heading(
+      "GRAPH-AWARE INVESTIGATION",
+      "Flow analysis",
+      "Conservative pattern hypotheses and explainable forward exposure paths reconstructed offline.",
+      '<button class="button button-primary" data-action="analyze">Re-run analysis</button>',
+    ) +
+    staleNotice() +
+    `<div class="notice"><span><strong>Hypotheses—not illicit labels.</strong> Address reuse, exact amount links, CoinJoin-like structure, anomaly, and propagated exposure do not prove laundering, identity, or wallet ownership.</span><button class="link-button" data-route="methodology">Read method →</button></div><div id="flow-summary"><div class="loading">Summarizing flow analysis…</div></div><section class="flow-workspace"><aside class="panel flow-catalog"><div class="flow-toolbar"><label class="search"><span class="screen-reader">Search flow patterns</span><input id="search-input" value="${esc(state.search)}" placeholder="Pattern ID, transaction, or wallet…"></label><div class="flow-filters"><select id="flow-type" aria-label="Pattern type"><option value="">All patterns</option><option value="peeling" ${state.flowType === "peeling" ? "selected" : ""}>Peeling chains</option><option value="mixing" ${state.flowType === "mixing" ? "selected" : ""}>Mixing cascades</option></select><select id="flow-confidence" aria-label="Minimum confidence"><option value="0">Any confidence</option><option value="70" ${state.flowConfidence === 70 ? "selected" : ""}>Confidence 70+</option><option value="85" ${state.flowConfidence === 85 ? "selected" : ""}>Confidence 85+</option></select><select id="flow-risk" aria-label="Minimum propagated risk"><option value="0">Any exposure</option><option value="10" ${state.flowRisk === 10 ? "selected" : ""}>Risk 10+</option><option value="25" ${state.flowRisk === 25 ? "selected" : ""}>Risk 25+</option></select><select id="flow-anomaly" aria-label="Minimum flow anomaly"><option value="0">Any anomaly</option><option value="0.55" ${state.flowAnomaly === 0.55 ? "selected" : ""}>Anomaly 0.55+</option><option value="0.62" ${state.flowAnomaly === 0.62 ? "selected" : ""}>Anomaly 0.62+</option></select></div></div><div class="flow-results"><div class="loading">Loading detected patterns…</div></div></aside><section id="flow-graph-panel" class="flow-graph-panel"><div class="flow-graph-head"><div><span class="eyebrow">ISOLATED PATTERN</span><h2 class="flow-graph-title">Select a pattern</h2><p class="flow-graph-subtitle">The selected pattern will animate into view.</p></div><button class="button button-small" data-flow-fit>Fit graph</button></div><div class="flow-legend"><span><i class="flow-key peel"></i>Peeling path</span><span><i class="flow-key mix"></i>Mixing link</span><span><i class="flow-key risk"></i>Propagated exposure</span><span>Drag nodes · pan · wheel or pinch to zoom</span></div><div id="flow-graph" class="flow-graph" role="application" aria-label="Interactive directed graph of the selected flow pattern"></div><div class="flow-graph-footer"><span id="flow-graph-caption">Select a pattern to isolate it. Double-click a transaction to inspect evidence.</span><span class="flow-graph-overflow"></span></div><details class="flow-node-access"><summary>Keyboard-accessible graph nodes</summary><div id="flow-node-list"></div></details></section></section>`;
+  await refreshFlows();
+}
 async function methodology() {
   const m = await api.model(),
     r = m.run,
@@ -582,7 +771,7 @@ async function methodology() {
     heading(
       "MODEL & DECISION LOGIC",
       "Methodology",
-      "Transparent correlation, anomaly scoring, clustering, and priority thresholds.",
+      "Transparent correlation, graph-aware anomaly scoring, flow patterns, exposure, clustering, and priority thresholds.",
       '<button class="button button-primary" data-action="analyze">Run analysis</button>',
     ) +
     `<section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Cross-layer correlation</h2><p>What the system can and cannot infer</p></div></div><div class="panel-body"><ol class="method-list"><li>Integrated rows join network observations to blockchain facts using an exact TXID.</li><li>First-seen timing and source-minute activity are descriptive evidence.</li><li>IP, country, and ASN values do not prove wallet ownership or physical location.</li><li>Provenance maps accepted and duplicate rows to SHA-256-hashed files.</li></ol></div></article><article class="panel"><div class="panel-head"><div><h2>Priority composition</h2><p>Additive rule evidence, capped at 100</p></div></div><div class="panel-body">${[
@@ -597,7 +786,7 @@ async function methodology() {
       )
       .join(
         "",
-      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>Entity clustering</h2><p>Common-input ownership plus conservative structural similarity</p></div></div><div class="panel-body"><ol class="method-list"><li>Non-collaborative multi-input transactions establish the primary common-input components.</li><li>Each wallet receives a deterministic 32-dimensional embedding of its input/output transaction neighborhood.</li><li>Separate components are linked only after at least two shared non-collaborative output contexts, cosine similarity of at least 0.82, and evidence that both wallets later appear as inputs.</li><li>Embedding-assisted groups are capped at 100 wallets. IP, geography, ASN, and guessed change addresses never merge wallets.</li><li>Every cluster remains an investigative hypothesis, not proof of common ownership or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>World map interpretation</h2><p>Approximate context, never evidentiary location proof</p></div></div><div class="panel-body"><ol class="method-list"><li>DB-IP City Lite resolves IPv4 and IPv6 endpoints entirely offline and is cached only for the current session.</li><li>Unmatched or non-public IPs use supplied country metadata as a labelled country-centroid fallback, or remain unlocated.</li><li>Dotted overview routes aggregate all observations by source city, destination city, and entity hypothesis while preserving totals.</li><li>Selecting one lead keeps IP markers at their approximate GeoIP coordinates and connects them with curved paths; transaction and wallet nodes are logical, not physical locations.</li><li>Approximate location and IP association do not prove identity, physical presence, wallet ownership, or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Model</span><strong>${c.modelAvailable ? "Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Training rows</span><strong>${num(c.trainingRows)} / 8,192</strong></div><div class="kv"><span>Forest</span><strong>${c.modelAvailable ? `${c.trees} trees · sample ${c.subsample}` : "Requires ≥32 transactions"}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Feature set: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nClustering: ${esc(c.clustering)}${esc(embeddingSummary)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
+      )}</div></article></section><section class="panel"><div class="panel-head"><div><h2>Entity clustering</h2><p>Common-input ownership plus conservative structural similarity</p></div></div><div class="panel-body"><ol class="method-list"><li>Non-collaborative multi-input transactions establish the primary common-input components.</li><li>Each wallet receives a deterministic 32-dimensional embedding of its input/output transaction neighborhood.</li><li>Separate components are linked only after at least two shared non-collaborative output contexts, cosine similarity of at least 0.82, and evidence that both wallets later appear as inputs.</li><li>Embedding-assisted groups are capped at 100 wallets. IP, geography, ASN, and guessed change addresses never merge wallets.</li><li>Every cluster remains an investigative hypothesis, not proof of common ownership or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Flow-pattern and exposure analysis</h2><p>Exact links, conservative structure, and reproducible risk decay</p></div></div><div class="panel-body"><ol class="method-list"><li>Outputs link to later inputs only when wallet identifier and integer satoshi amount match exactly and both sides have a unique candidate. Ambiguous matches, hubs above 100 occurrences, and non-monotonic first-observed times are counted and skipped.</li><li>Peeling hypotheses require 3–20 non-CoinJoin transactions, 2–5 outputs per continuation step, a 70–99.5% continuation, and a 0.5–30% remainder.</li><li>A lone CoinJoin-like structure is caution-only with zero points. A mixing cascade requires at least two directly linked CoinJoin-like transactions.</li><li>Only peeling or mixing hypotheses at confidence 70+ seed exposure. Risk travels forward for four transaction hops using current risk × 0.65 × √(output share), retains the strongest path, and stops below 10.</li><li>First-observed network timestamps are not authoritative block times. All patterns and exposure paths are investigative hypotheses, not declarations of laundering or ownership.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>World map interpretation</h2><p>Approximate context, never evidentiary location proof</p></div></div><div class="panel-body"><ol class="method-list"><li>DB-IP City Lite resolves IPv4 and IPv6 endpoints entirely offline and is cached only for the current session.</li><li>Unmatched or non-public IPs use supplied country metadata as a labelled country-centroid fallback, or remain unlocated.</li><li>Dotted overview routes aggregate all observations by source city, destination city, and entity hypothesis while preserving totals.</li><li>Selecting one lead keeps IP markers at their approximate GeoIP coordinates and connects them with curved paths; transaction and wallet nodes are logical, not physical locations.</li><li>Approximate location and IP association do not prove identity, physical presence, wallet ownership, or control.</li></ol></div></section><section class="panel"><div class="panel-head"><div><h2>Current local model</h2><p>Saved with evidence revision</p></div></div><div class="panel-body">${r ? `<div class="two-col"><div><div class="kv"><span>Analysis run</span><strong class="mono">${esc(r.id)}</strong></div><div class="kv"><span>Created</span><strong>${date(r.created)}</strong></div><div class="kv"><span>Evidence revision</span><strong>${r.revision}</strong></div><div class="kv"><span>Transactions</span><strong>${num(r.transaction_count)}</strong></div></div><div><div class="kv"><span>Transaction model</span><strong>${c.modelAvailable ? "14-feature Isolation Forest + rules" : "Rules only"}</strong></div><div class="kv"><span>Flow model</span><strong>${c.flowAnalysis?.modelAvailable ? "7-feature Isolation Forest" : "Structural confidence · requires ≥32 patterns"}</strong></div><div class="kv"><span>Detected patterns</span><strong>${num((c.flowAnalysis?.patternCounts?.peeling || 0) + (c.flowAnalysis?.patternCounts?.mixing || 0))}</strong></div><div class="kv"><span>Fixed seed</span><strong>${c.seed}</strong></div></div></div><div class="code-block mt">Transaction features: ${esc(c.featureNames.join(", "))}\nFeature evidence SHA-256: ${esc(c.featureSha256)}\nExact flow links: ${num(c.flowAnalysis?.diagnostics?.exactLinks || 0)}\nSkipped ambiguous outputs / inputs: ${num(c.flowAnalysis?.diagnostics?.ambiguousOutputs || 0)} / ${num(c.flowAnalysis?.diagnostics?.ambiguousInputs || 0)}\nSkipped high-degree wallet identifiers: ${num(c.flowAnalysis?.diagnostics?.highDegreeAddresses || 0)}\nClustering: ${esc(c.clustering)}${esc(embeddingSummary)}</div>` : '<div class="empty">No analysis run yet.</div>'}</div></section><section class="panel mt"><div class="panel-head"><div><h2>Explainable contributions</h2><p>Every trigger appears verbatim on the lead</p></div></div><div class="panel-body schema-list">${[
       ["Large value", "+25 · ≥100 BTC and above robust cutoff"],
       ["High fee", "+28 · >5% and ≥0.0001 BTC"],
       ["Fan-out", "+20 · ≥10 outputs"],
@@ -605,6 +794,9 @@ async function methodology() {
       ["Source burst", "+28 · ≥12 distinct TXIDs from source per UTC minute"],
       ["Wide propagation", "+10 · ≥30 observations across ≥8 sources"],
       ["Isolation Forest", "+12 at ≥0.55 or +22 at ≥0.62; not probability"],
+      ["Peeling-chain membership", "+25 maximum structural-pattern contribution"],
+      ["Mixing-cascade membership", "+20 when no peeling contribution applies"],
+      ["Propagated exposure", "round(risk × 0.30), capped at +30"],
     ]
       .map(
         (x) =>
@@ -620,7 +812,7 @@ async function system() {
       "Offline assurance",
       "Runtime and storage controls.",
     ) +
-    `<div class="notice info"><span>Bundled files use Electron IPC and a worker MessagePort. Network APIs, remote content, permissions, downloads, and TCP/UDP listeners are disabled.</span></div><section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Runtime</h2></div><span class="badge low">LOCAL</span></div><div class="panel-body"><div class="kv"><span>Network</span><strong>${esc(e.network)}</strong></div><div class="kv"><span>Application listeners</span><strong>${e.ports}</strong></div><div class="kv"><span>Internal transport</span><strong>${esc(e.transport)}</strong></div><div class="kv"><span>Remote content</span><strong>Denied</strong></div><div class="kv"><span>Permissions / downloads</span><strong>Denied</strong></div></div></article><article class="panel"><div class="panel-head"><div><h2>Storage</h2></div></div><div class="panel-body"><p class="full-path">${esc(e.database)}</p><div class="kv"><span>Database</span><strong>Embedded SQLite</strong></div><div class="kv"><span>Journal</span><strong>WAL · synchronous FULL</strong></div><div class="kv"><span>Amounts</span><strong>Integer satoshis</strong></div><div class="kv"><span>Source integrity</span><strong>SHA-256</strong></div></div></article></section><section class="panel"><div class="panel-head"><div><h2>Bundled runtime</h2></div></div><div class="panel-body"><div class="kv"><span>Satoshi Trace</span><strong>${esc(e.application)}</strong></div><div class="kv"><span>Electron / Node</span><strong>${esc(e.electron)} / ${esc(e.node)}</strong></div><div class="kv"><span>ML</span><strong>Bundled JavaScript</strong></div><div class="kv"><span>Geo lookup</span><strong>${esc(e.geoip)}</strong></div><div class="kv"><span>Geo transport</span><strong>None · packaged MMDB only</strong></div></div></section>`;
+    `<div class="notice info"><span>Bundled files use Electron IPC and a worker MessagePort. Network APIs, remote content, permissions, downloads, and TCP/UDP listeners are disabled. Transaction and flow analysis never contacts an external model, label service, or wallet list.</span></div><section class="two-col"><article class="panel"><div class="panel-head"><div><h2>Runtime</h2></div><span class="badge low">LOCAL</span></div><div class="panel-body"><div class="kv"><span>Network</span><strong>${esc(e.network)}</strong></div><div class="kv"><span>Application listeners</span><strong>${e.ports}</strong></div><div class="kv"><span>Internal transport</span><strong>${esc(e.transport)}</strong></div><div class="kv"><span>Remote content</span><strong>Denied</strong></div><div class="kv"><span>Permissions / downloads</span><strong>Denied</strong></div></div></article><article class="panel"><div class="panel-head"><div><h2>Storage</h2></div></div><div class="panel-body"><p class="full-path">${esc(e.database)}</p><div class="kv"><span>Database</span><strong>Embedded SQLite · derived schema v3</strong></div><div class="kv"><span>Journal</span><strong>WAL · synchronous FULL</strong></div><div class="kv"><span>Amounts / flow links</span><strong>Integer satoshis · exact local matching</strong></div><div class="kv"><span>Source integrity</span><strong>SHA-256</strong></div></div></article></section><section class="panel"><div class="panel-head"><div><h2>Bundled runtime</h2></div></div><div class="panel-body"><div class="kv"><span>Satoshi Trace</span><strong>${esc(e.application)}</strong></div><div class="kv"><span>Electron / Node</span><strong>${esc(e.electron)} / ${esc(e.node)}</strong></div><div class="kv"><span>ML</span><strong>Transaction + flow Isolation Forest · bundled JavaScript</strong></div><div class="kv"><span>Risk seeds</span><strong>Detected patterns only · no external label list</strong></div><div class="kv"><span>Geo lookup</span><strong>${esc(e.geoip)}</strong></div><div class="kv"><span>Geo transport</span><strong>None · packaged MMDB only</strong></div></div></section>`;
 }
 function settingsClusterRows(data) {
   const overrides = colorOverrides();
@@ -668,6 +860,7 @@ async function navigate(route, push = true) {
   };
   if (!routes.some((x) => x[0] === route)) route = "overview";
   if (state.route === "leads" && route !== "leads") destroyMapGraph();
+  if (state.route === "flows" && route !== "flows") destroyFlowGraph();
   state.route = route;
   state.search = "";
   state.offset = 0;
@@ -682,6 +875,7 @@ async function navigate(route, push = true) {
       evidence,
       transactions: () => listing("transactions"),
       clusters,
+      flows,
       leads: leadsWorkspace,
       activity,
       methodology,
@@ -1669,7 +1863,11 @@ async function openTx(txid) {
     state.selectedTx = txid;
     document.getElementById("dialog-label").textContent =
       "TRANSACTION EVIDENCE";
-    dialogBody.innerHTML = `<div class="dialog-content"><div class="eyebrow">${t.priority ? "PRIORITIZED LEAD" : "BLOCKCHAIN RECORD"} ${state.summary?.stale ? "· STALE ANALYSIS" : ""}</div><h2>${t.priority ? `${t.priority} priority · ${t.score}/100` : "Transaction detail"}</h2><div class="tx-full">${esc(t.txid)}</div>${txGraph(d)}<div class="detail-metrics"><div class="detail-metric"><small>Output value</small><strong>${btc(t.output_sat)}</strong></div><div class="detail-metric"><small>Fee</small><strong>${btc(t.fee_sat)}</strong></div><div class="detail-metric"><small>Network observations</small><strong>${num(d.observationTotal)}</strong></div><div class="detail-metric"><small>Entity hypotheses</small><strong>${num(d.clusters.length)}</strong></div></div>${rs.length ? `<h3 class="section-title">Why this was flagged</h3>${rs.map((r) => `<div class="reason"><span class="reason-points">${r.points ? `+${r.points}` : "!"}</span><div><strong>${esc(r.code)} · ${esc(r.category)}</strong><p>${esc(r.explanation)}</p></div></div>`).join("")}` : '<div class="notice">No rule reached the triage threshold.</div>'}${
+    const flowBadges = d.flowPatterns
+        .map((pattern) => `<span class="flow-type ${esc(pattern.type)}">${pattern.type === "peeling" ? "PEELING CHAIN" : "MIXING CASCADE"} · ${pattern.confidence}</span>`)
+        .join(""),
+      riskPath = Array.isArray(t.risk_path) ? t.risk_path : [];
+    dialogBody.innerHTML = `<div class="dialog-content"><div class="eyebrow">${t.priority ? "PRIORITIZED LEAD" : "BLOCKCHAIN RECORD"} ${state.summary?.stale ? "· STALE ANALYSIS" : ""}</div><h2>${t.priority ? `${t.priority} priority · ${t.score}/100` : "Transaction detail"}</h2><div class="tx-full">${esc(t.txid)}</div>${flowBadges ? `<div class="detail-flow-badges">${flowBadges}</div>` : ""}${txGraph(d)}<div class="detail-metrics"><div class="detail-metric"><small>Output value</small><strong>${btc(t.output_sat)}</strong></div><div class="detail-metric"><small>Exposure risk</small><strong>${Number(t.exposure_risk) ? `${Number(t.exposure_risk).toFixed(1)}/100` : "None"}</strong></div><div class="detail-metric"><small>Risk boost</small><strong>${Number(t.risk_boost) ? `+${t.risk_boost}` : "0"}</strong></div><div class="detail-metric"><small>Entity hypotheses</small><strong>${num(d.clusters.length)}</strong></div></div>${rs.length ? `<h3 class="section-title">Why this was flagged</h3>${rs.map((r) => `<div class="reason"><span class="reason-points">${r.points ? `+${r.points}` : "!"}</span><div><strong>${esc(r.code)} · ${esc(r.category)}</strong><p>${esc(r.explanation)}</p></div></div>`).join("")}` : '<div class="notice">No rule reached the triage threshold.</div>'}${riskPath.length ? `<h3 class="section-title">Strongest automatic exposure path</h3><p class="form-note">Seed ${esc(t.seed_pattern_id)} · ${num(t.risk_hops)} hop${Number(t.risk_hops) === 1 ? "" : "s"}. Each step is derived from a suspected-pattern hypothesis, not an illicit-wallet label.</p><div class="risk-path">${riskPath.map((step, index) => `<div><span>${index + 1}</span><strong>${esc(step.kind === "seed" ? `Seed pattern ${step.patternId}` : step.kind === "spend" ? `Spend ${trunc(step.txid, 24)}` : `Output ${trunc(step.address, 24)}`)}</strong><small>Risk ${Number(step.risk).toFixed(2)}${step.amountSat !== undefined ? ` · ${btc(step.amountSat)}` : ""}</small></div>`).join("")}</div>` : ""}${
       t.anomaly !== null
         ? `<h3 class="section-title">Saved feature evidence</h3><div class="code-block">Isolation Forest anomaly score: ${Number(t.anomaly).toFixed(4)} (not risk probability)\n${Object.entries(
             f,
@@ -1839,6 +2037,8 @@ main.addEventListener("click", (e) => {
     tx = e.target.closest("[data-tx]")?.dataset.tx,
     mapLead = e.target.closest("[data-map-lead]")?.dataset.mapLead,
     mapZoom = e.target.closest("[data-map-zoom]")?.dataset.mapZoom,
+    flowPattern = e.target.closest("[data-flow-pattern]")?.dataset.flowPattern,
+    flowNode = e.target.closest("[data-flow-node]")?.dataset.flowNode,
     c = e.target.closest("[data-cluster]")?.dataset.cluster,
     errors = e.target.closest("[data-errors]"),
     remove = e.target.closest("[data-delete-import]"),
@@ -1850,6 +2050,16 @@ main.addEventListener("click", (e) => {
   else if (tx) openTx(tx);
   else if (mapLead) selectMapLead(mapLead);
   else if (mapZoom) controlMapViewport(mapZoom);
+  else if (flowPattern) selectFlowPattern(flowPattern);
+  else if (flowNode && state.flowGraph) {
+    const node = state.flowGraph.getElementById(flowNode);
+    state.flowGraph.elements().unselect();
+    node.select();
+    reducedMotion
+      ? state.flowGraph.center(node)
+      : state.flowGraph.animate({ center: { eles: node }, zoom: Math.max(1, state.flowGraph.zoom()), duration: 300 });
+  }
+  else if (e.target.closest("[data-flow-fit]")) state.flowGraph?.fit(undefined, 35);
   else if (c) openCluster(c);
   else if (errors) openErrors(errors.dataset.errors, errors.dataset.name);
   else if (remove) removeImport(remove.dataset.deleteImport);
@@ -1868,6 +2078,8 @@ main.addEventListener("click", (e) => {
     state.offset = Number(p.dataset.page);
     pageType === "clusters"
       ? refreshClusters()
+      : pageType === "flows"
+        ? refreshFlows()
       : pageType === "leads-map"
         ? refreshMapLeadList(pageLimit)
         : pageType === "settings-clusters"
@@ -1886,6 +2098,8 @@ main.addEventListener("input", (e) => {
       () =>
         state.route === "clusters"
           ? refreshClusters()
+          : state.route === "flows"
+            ? refreshFlows()
           : state.route === "leads"
             ? refreshMapLeadList()
           : refreshList(state.route),
@@ -1921,6 +2135,15 @@ main.addEventListener("change", (e) => {
     state.status = e.target.value;
     state.offset = 0;
     state.route === "leads" ? refreshMapLeadList() : refreshList("leads");
+  }
+  if (["flow-type", "flow-confidence", "flow-risk", "flow-anomaly"].includes(e.target.id)) {
+    state.flowType = document.getElementById("flow-type")?.value || "";
+    state.flowConfidence = Number(document.getElementById("flow-confidence")?.value || 0);
+    state.flowRisk = Number(document.getElementById("flow-risk")?.value || 0);
+    state.flowAnomaly = Number(document.getElementById("flow-anomaly")?.value || 0);
+    state.offset = 0;
+    state.selectedFlow = null;
+    refreshFlows();
   }
 });
 main.addEventListener("keydown", (event) => {
