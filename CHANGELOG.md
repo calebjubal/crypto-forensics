@@ -35,6 +35,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Draft-release validation and platform builds now fetch Git LFS assets so the bundled City Lite database is tested and packaged instead of its pointer file.
 - Development authenticated startup no longer waits on or leaves visible a hidden sign-in/loading animation.
 
 ## [1.0.4] - 2026-08-30
