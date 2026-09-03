@@ -171,7 +171,15 @@ app
       },
       {},
     );
-    handle("auth-status", () => request("auth.status", {}, {}), false);
+    handle(
+      "auth-status",
+      async () => ({
+        ...(await request("auth.status", {}, {})),
+        authenticated: !!authSession,
+        username: authSession?.username || null,
+      }),
+      false,
+    );
     handle(
       "auth-setup",
       async (payload) => {
@@ -207,6 +215,8 @@ app
     handle("page", (payload) => request("page", payload));
     handle("detail", (payload) => request("detail", payload));
     handle("cluster", (payload) => request("cluster", payload));
+    handle("flow-overview", (payload) => request("flow-overview", payload));
+    handle("flow-detail", (payload) => request("flow-detail", payload));
     handle("map-overview", () => request("map-overview"));
     handle("map-lead", (payload) => request("map-lead", payload));
     handle("review", (payload) => request("review", payload));
@@ -259,7 +269,7 @@ app
         title: "Remove ingested evidence",
         message: `Remove ${source.name} from this case?`,
         detail:
-          "Rows unique to this source will be removed. Shared observations from other sources remain. Derived leads and clusters will be cleared until analysis is run again. The original file on disk will not be deleted.",
+          "Rows unique to this source will be removed. Shared observations from other sources remain. Derived leads, clusters, flow patterns, and exposure paths will be cleared until analysis is run again. The original file on disk will not be deleted.",
         buttons: ["Remove source", "Cancel"],
         defaultId: 1,
         cancelId: 1,

@@ -9,6 +9,8 @@ const {
   page,
   detail,
   clusterDetail,
+  flowOverview,
+  flowDetail,
   review,
   audit,
   authenticationStatus,
@@ -71,6 +73,12 @@ parentPort.on("message", async ({ id, action, payload = {}, context = {} }) => {
         break;
       case "cluster":
         result = clusterDetail(db, payload.id);
+        break;
+      case "flow-overview":
+        result = flowOverview(db, payload);
+        break;
+      case "flow-detail":
+        result = flowDetail(db, payload.id);
         break;
       case "map-overview":
         result = mapOverview(db, geoLocator);

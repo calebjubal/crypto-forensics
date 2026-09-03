@@ -11,7 +11,7 @@
   </p>
 
   <p>
-    <img alt="Version 1.0.4" src="https://img.shields.io/badge/version-v1.0.4-E88435?style=for-the-badge">
+    <img alt="Version 1.0.5" src="https://img.shields.io/badge/version-v1.0.5-E88435?style=for-the-badge">
     <a href="https://github.com/calebjubal/crypto-forensics/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/calebjubal/crypto-forensics?style=for-the-badge&color=17243A"></a>
     <img alt="Offline first" src="https://img.shields.io/badge/runtime-100%25_offline-248675?style=for-the-badge">
     <img alt="Tests passing" src="https://img.shields.io/badge/tests-15_passing-248675?style=for-the-badge">
@@ -41,10 +41,10 @@
 
 ---
 
-Satoshi Trace is an offline Electron desktop application for investigators working with integrated Bitcoin transaction and network-observation metadata. It streams bulk CSV, JSON, and XML evidence into an embedded SQLite case database, correlates blockchain and network layers by transaction ID, detects unusual activity, creates conservative entity hypotheses, and produces prioritized leads with human-readable explanations.
+Satoshi Trace is an offline Electron desktop application for investigators working with integrated Bitcoin transaction and network-observation metadata. It streams bulk CSV, JSON, and XML evidence into an embedded SQLite case database, correlates blockchain and network layers by transaction ID, detects unusual transactions and conservative flow-pattern hypotheses, creates entity hypotheses, propagates explainable exposure from high-confidence automatic pattern seeds, and produces prioritized leads with human-readable explanations.
 
 > [!IMPORTANT]
-> Scores, clusters, and network correlations are investigative hypotheses—not proof of identity, ownership, or wrongdoing. Every result requires human review and corroboration.
+> Scores, clusters, flow patterns, propagated exposure, and network correlations are investigative hypotheses—not proof of identity, laundering, ownership, or wrongdoing. Every result requires human review and corroboration.
 
 ## Highlights
 
@@ -52,7 +52,9 @@ Satoshi Trace is an offline Electron desktop application for investigators worki
 - **Bulk evidence ingestion** — select multiple files together, add more later, review rejected rows, and safely remove individual sources.
 - **Three evidence formats** — CSV, JSON, and XML are parsed as streams instead of loading entire source files into memory.
 - **Cross-layer correlation** — joins IP, port, time, geography, and ASN observations to Bitcoin TXIDs, addresses, and amounts.
-- **Local AI/ML analysis** — a bundled Isolation Forest measures relative unusualness without contacting an external service.
+- **Graph-aware local AI/ML analysis** — bundled transaction- and flow-level Isolation Forest models measure relative unusualness without contacting an external service.
+- **Conservative flow analysis** — exact wallet-and-satoshi links support peeling-chain and directly linked mixing-cascade hypotheses with explicit ambiguity and hub safeguards.
+- **Explainable exposure** — only high-confidence automatic pattern hypotheses seed four-hop forward risk, with the strongest saved path and a disclosed decay formula.
 - **Conservative entity clustering** — common-input ownership is supplemented by deterministic transaction-graph embeddings with repeated-context, similarity, and size safeguards.
 - **Interactive entity graphs** — bundled Cytoscape views map address participation to related transactions with ring and flow layouts.
 - **Transaction world map** — a bundled Natural Earth outline and DB-IP City Lite database show full-case city routes, then reveal a selected lead's IP, transaction, and wallet path.
@@ -94,18 +96,22 @@ flowchart LR
     A[CSV / JSON / XML evidence] --> B[Streaming validation]
     B --> C[(Embedded SQLite)]
     C --> D[Network + blockchain correlation]
-    D --> E[Isolation Forest anomaly scoring]
-    D --> F[Entity clustering]
-    E --> G[Explainable priority leads]
-    F --> G
-    G --> H[Human review and export]
+    D --> E[14-feature transaction anomaly scoring]
+    D --> F[Exact amount flow reconstruction]
+    D --> G[Entity clustering]
+    F --> H[Pattern detection + flow anomaly]
+    H --> I[Explainable exposure propagation]
+    E --> J[Explainable priority leads]
+    I --> J
+    G --> J
+    J --> K[Human review and export]
 ```
 
 1. **Authenticate** with the local investigator account.
 2. **Import** one or many evidence files from local storage.
 3. **Review provenance** and rejected-row explanations in the source ledger.
-4. **Run analysis** to rebuild anomaly scores, entity clusters, and leads.
-5. **Investigate** transactions, correlated observations, feature evidence, clustering hypotheses, and the full-case transaction map. Selecting a lead adds its bold IP/transaction/wallet path without filtering away the case overview.
+4. **Run analysis** to rebuild anomaly scores, exact flow links, flow patterns, exposure paths, entity clusters, and leads.
+5. **Investigate** transactions, correlated observations, feature evidence, flow-pattern and exposure hypotheses, clustering hypotheses, and the full-case transaction map.
 6. **Record disposition** and case notes for each lead.
 7. **Export** selected investigative results to a local JSON or CSV report.
 
@@ -174,7 +180,17 @@ Priority thresholds:
 | Medium   |  25–49 |
 | Low      |   0–24 |
 
-The Isolation Forest score expresses relative unusualness within the imported dataset; it is not a probability of criminal activity. Rule explanations identify the observations contributing to triage, while the transaction view retains the underlying network records and source provenance for review.
+The transaction Isolation Forest uses 14 saved features: output value, fee ratio, input/output counts, observation/source counts, observation span, source-minute burst, upstream/downstream transaction degree, reused-input count, equal-output concentration, largest-output share, and continuation ratio. Its score expresses relative unusualness within the imported dataset; it is not a probability of criminal activity. Rule explanations identify the observations contributing to triage, while the transaction view retains the underlying network records and source provenance for review.
+
+Flow reconstruction normalizes input/output wallet identifiers and integer satoshi amounts into indexed temporary tables in bounded batches. An output links to a later input only when wallet identifier and amount match exactly, the first-observed timestamp is strictly later, neither side is ambiguous, and the wallet identifier occurs no more than 100 times in the matching table. Ambiguous output/input matches, high-degree identifiers, and timestamp conflicts are counted in the saved analysis configuration and JSON report rather than silently accepted. First-observed network timestamps are not authoritative block times.
+
+Peeling-chain hypotheses contain 3–20 non-CoinJoin transactions. Each continuation step has 2–5 outputs, carries 70–99.5% of value through an exact link, leaves a 0.5–30% remainder, and advances monotonically in first-observed time. Confidence starts at 70 and can add up to 15 for length and 15 for continuation consistency. A CoinJoin-like transaction still uses the existing ≥3-input/≥3-equal-output structural rule, but one transaction is caution-only, contributes zero points, and never seeds risk. A mixing cascade requires at least two CoinJoin-like transactions connected by a direct exact flow link; its confidence starts at 70 and can add up to 15 for linked mixes and 15 for equal-output concentration.
+
+When at least 32 flow patterns exist, a separate deterministic Isolation Forest scores sequence length, wallet footprint, value, duration, continuation consistency, equal-output concentration, and branching. Below 32 patterns, the UI and exports explicitly show that flow anomaly is unavailable while retaining structural confidence.
+
+Only detected peeling chains and mixing cascades at confidence 70 or above become automatic suspected-pattern seeds. No manual or bundled illicit-wallet list is used. Final-pattern exit wallets receive the pattern confidence, then exposure travels forward for at most four transaction hops using `next risk = current risk × 0.65 × sqrt(output amount / transaction output total)`. The strongest path per wallet is retained, cycles are prevented, and propagation stops below risk 10. A transaction receives the highest risk of its input wallets. Exposure remains a separate 0–100 value and contributes `round(risk × 0.30)` to lead score, capped at 30. Structural membership contributes at most once: +25 for peeling or +20 for mixing. Final lead score remains capped at 100.
+
+The Flow Analysis screen presents peeling, CoinJoin-caution, mixing, automatic-seed, and exposed-wallet totals alongside searchable type/confidence/anomaly/risk filters. Selecting a pattern isolates it and animates a compact directed Cytoscape graph to fit. Amber solid edges indicate peeling structure, dashed violet indicates linked mixes, and red edge thickness reflects propagated exposure. Nodes are draggable, the viewport is pannable and zoomable, keyboard-accessible node controls mirror the canvas, and double-clicking a transaction opens evidence. Detail views cap rendering at 120 transactions, 160 wallets, and 600 edges, using labelled overflow nodes while retaining full saved results and export counts.
 
 Entity clusters begin with the common-input heuristic as a conservative ownership hypothesis, excluding possible collaborative transactions. The offline analytics worker then creates deterministic 32-dimensional embeddings of each wallet's input/output transaction neighborhood. Separate common-input components are linked only when both later appear as inputs, share at least two non-collaborative output contexts, reach cosine similarity of at least 0.82, and remain within a 100-wallet cap. A generic structural resemblance, a single co-occurrence, IP data, geography, ASN metadata, and guessed change addresses cannot merge wallets. These safeguards reduce—not eliminate—false associations.
 
@@ -192,7 +208,7 @@ IPv4 and IPv6 locations are inferred locally from the bundled DB-IP City Lite Se
 - Inspect validation reasons without discarding successfully ingested evidence.
 - Remove a source without deleting the original file from disk.
 - Preserve observations supported by another imported source.
-- Clear derived leads and clusters after evidence removal until analysis is run again.
+- Clear derived leads, clusters, exact flow links, patterns, seeds, and exposure paths after evidence removal until analysis is run again.
 
 ## Security and offline boundary
 
@@ -219,7 +235,7 @@ For defense in depth, deploy on a disconnected workstation and enforce the organ
 | Interface          | HTML, Tailwind CSS 4, daisyUI 5, Anime.js, Cytoscape.js   |
 | Local storage      | Embedded SQLite with WAL and `synchronous=FULL`           |
 | Ingestion          | Streaming CSV, JSON, and SAX-style XML parsers            |
-| Analytics          | Explainable rules and bundled JavaScript Isolation Forest |
+| Analytics          | Explainable rules, exact flow graph, and two bundled JavaScript Isolation Forest models |
 | Geolocation        | Bundled DB-IP City Lite MMDB; session-only IP cache        |
 | Map                | Natural Earth 1:110m outline with Cytoscape overlays       |
 | Internal transport | Electron IPC and worker messages only                     |
@@ -271,7 +287,7 @@ npm run make
 The `Update draft release` workflow follows electron-builder's recommended GitHub release process:
 
 1. Set the intended version in `package.json` and `package-lock.json`.
-2. Create a draft GitHub release whose tag is that version prefixed with `v`, such as `v1.0.4`.
+2. Create a draft GitHub release whose tag is that version prefixed with `v`, such as `v1.0.5`.
 3. Push release-candidate commits to `dev`, or run the workflow manually.
 4. CI verifies that exactly one matching draft exists, runs the test suite, and builds Windows and Linux artifacts without allowing electron-builder to publish them independently.
 5. A final serialized job replaces the draft assets only after every platform build succeeds.
@@ -287,6 +303,7 @@ Production installers should be signed with the platform owner’s trusted code-
 assets/                 Compiled CSS, icons, world outline, and GeoIP data
 src/analytics.js        Feature extraction, scoring, and clustering
 src/database.js         SQLite schema, provenance, queries, and authentication
+src/flow-analysis.js    Exact flow links, patterns, flow anomaly, and exposure paths
 src/isolation-forest.js Bundled anomaly model
 src/geolocation.js      Offline City Lite lookup and country fallback
 src/map.js              Bounded overview and focused map projections
@@ -309,6 +326,8 @@ styles.input.css        Tailwind and daisyUI theme source
 - A location/IP route never proves wallet ownership, identity, control, or physical presence.
 - Batching, consolidation, large transfers, fees, and collaborative transactions can have legitimate explanations.
 - Common-input and graph-embedding clustering can produce false associations and must be treated as a hypothesis.
+- Address reuse and exact address/amount matching do not establish ownership or an authoritative blockchain spend relationship when source metadata is incomplete.
+- CoinJoin-like structure, peeling patterns, mixing cascades, anomaly, and propagated exposure do not prove laundering or illicit status.
 - Deleting or losing the local case database removes its accounts, evidence, reviews, and audit history.
 - There is intentionally no cloud backup, synchronization, telemetry, or password-recovery service.
 

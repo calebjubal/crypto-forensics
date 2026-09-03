@@ -8,6 +8,11 @@ const {
 } = require("./isolation-forest");
 const { audit } = require("./database");
 const { hash } = require("./validation");
+const {
+  prepareFlowAnalysis,
+  persistFlowAnalysis,
+  clearPersistedFlow,
+} = require("./flow-analysis");
 const FEATURE_NAMES = [
   "log_output_btc",
   "fee_ratio",
@@ -17,8 +22,14 @@ const FEATURE_NAMES = [
   "log_sources",
   "log_observation_span_seconds",
   "log_source_minute_transactions",
+  "log_upstream_transactions",
+  "log_downstream_transactions",
+  "log_reused_input_addresses",
+  "equal_output_concentration",
+  "largest_output_share",
+  "continuation_ratio",
 ];
-const RULE_VERSION = "1.0.0";
+const RULE_VERSION = "2.0.0";
 const GRAPH_EMBEDDING = Object.freeze({
   version: "1.0.0",
   projection: "SHA-256 signed bipartite-neighborhood projection",
@@ -75,6 +86,12 @@ function vector(row) {
     Math.log1p(row.sources),
     Math.log1p(row.span_ms / 1000),
     Math.log1p(row.burst),
+    Math.log1p(row.upstream_transactions),
+    Math.log1p(row.downstream_transactions),
+    Math.log1p(row.reused_inputs),
+    row.equal_output_concentration,
+    row.largest_output_share,
+    row.continuation_ratio,
   ];
 }
 function median(values) {
@@ -161,6 +178,27 @@ function reasonsFor(row, anomaly, baseline) {
       0,
       "At least 3 inputs and 3 equal-valued outputs suggest a possible collaborative transaction. Common-input clustering was excluded for this transaction; this pattern is not itself suspicious.",
     );
+  if (row.peeling)
+    add(
+      "PEELING_CHAIN",
+      "Flow pattern",
+      25,
+      "This transaction belongs to a conservative peeling-chain hypothesis reconstructed from exact address-and-satoshi continuation links. Pattern membership does not prove laundering or common ownership.",
+    );
+  else if (row.mixing)
+    add(
+      "MIXING_CASCADE",
+      "Flow pattern",
+      20,
+      "This transaction belongs to a sequence of at least two directly linked CoinJoin-like structures. The structure is an investigative hypothesis, not proof of laundering.",
+    );
+  if (row.risk_boost > 0)
+    add(
+      "PROPAGATED_EXPOSURE",
+      "Exposure risk",
+      row.risk_boost,
+      `Strongest automatic-pattern exposure is ${Number(row.exposure_risk).toFixed(1)}/100 at hop ${row.risk_hops}; the explainable lead boost is capped at 30 points. Exposure is not an illicit-status label.`,
+    );
   return reasons;
 }
 
@@ -181,8 +219,14 @@ function analyze(
   db.exec("BEGIN IMMEDIATE");
   try {
     onProgress({
-      phase: "Correlating exact TXIDs and UTC observation windows",
+      phase: "Reconstructing exact address and amount flows",
       percent: 5,
+    });
+    check();
+    const flowAnalysis = prepareFlowAnalysis(db, check);
+    onProgress({
+      phase: "Detecting conservative flow patterns and exposure paths",
+      percent: 18,
     });
     check();
     db.exec(`DROP TABLE IF EXISTS temp.source_minutes; DROP TABLE IF EXISTS temp.tx_bursts; DROP TABLE IF EXISTS temp.features;
@@ -193,8 +237,12 @@ function analyze(
       CREATE TEMP TABLE features AS SELECT t.txid,t.output_sat,t.input_sat,t.fee_sat,t.coinjoin,
         json_array_length(t.input_addresses) AS inputs,json_array_length(t.output_addresses) AS outputs,
         count(o.id) AS observations,count(DISTINCT o.src_ip) AS sources,
-        max(o.ts_ms)-min(o.ts_ms) AS span_ms,b.burst
-        FROM transactions t JOIN observations o ON o.txid=t.txid JOIN tx_bursts b ON b.txid=t.txid GROUP BY t.txid;
+        max(o.ts_ms)-min(o.ts_ms) AS span_ms,b.burst,
+        fm.upstream_transactions,fm.downstream_transactions,fm.reused_inputs,
+        fm.equal_output_concentration,fm.largest_output_share,fm.continuation_ratio,
+        fc.exposure_risk,fc.risk_boost,fc.risk_hops,fc.seed_pattern_id,fc.peeling,fc.mixing
+        FROM transactions t JOIN observations o ON o.txid=t.txid JOIN tx_bursts b ON b.txid=t.txid
+        JOIN flow_metrics fm ON fm.txid=t.txid JOIN tx_flow_context fc ON fc.txid=t.txid GROUP BY t.txid;
       CREATE UNIQUE INDEX temp.features_idx ON features(txid);`);
     check();
     const random = seededRandom(73129),
@@ -223,7 +271,7 @@ function analyze(
       mad: deviations,
       amountCutoff: centers[0] + 6 * Math.max(0.1, deviations[0]),
     };
-    onProgress({ phase: "Training local Isolation Forest", percent: 25 });
+    onProgress({ phase: "Training local transaction Isolation Forest", percent: 30 });
     const model = train(reservoir);
     check();
     const revision = Number(
@@ -249,6 +297,21 @@ function analyze(
         candidatePairs: 0,
         acceptedLinks: 0,
       },
+      flowAnalysis: {
+        version: flowAnalysis.version,
+        modelAvailable: !!flowAnalysis.model,
+        minimumModelRows: 32,
+        thresholds: { caution: 0.55, strong: 0.62 },
+        patternCounts: flowAnalysis.counts,
+        diagnostics: flowAnalysis.diagnostics,
+        risk: {
+          maximumHops: 4,
+          hopDecay: 0.65,
+          cutoff: 10,
+          formula:
+            "current risk × 0.65 × sqrt(output amount / transaction output total)",
+        },
+      },
     };
     db.prepare("INSERT INTO analysis_runs VALUES(?,?,?,?,?,?)").run(
       id,
@@ -256,10 +319,13 @@ function analyze(
       revision,
       total,
       JSON.stringify(config),
-      JSON.stringify(model),
+      JSON.stringify({ transaction: model, flow: flowAnalysis.model }),
     );
+    db.exec("DELETE FROM lead_scores;");
+    clearPersistedFlow(db);
+    persistFlowAnalysis(db, flowAnalysis, id);
     db.exec(
-      "DELETE FROM lead_scores; DELETE FROM cluster_embedding_links; DELETE FROM cluster_members; DELETE FROM clusters;",
+      "DELETE FROM cluster_embedding_links; DELETE FROM cluster_members; DELETE FROM clusters;",
     );
     const insert = db.prepare(
       "INSERT INTO lead_scores VALUES(?,?,?,?,?,?,?,?)",
@@ -298,7 +364,7 @@ function analyze(
       if (++seen % 1000 === 0)
         onProgress({
           phase: "Scoring transactions",
-          percent: 30 + Math.round((seen / total) * 35),
+          percent: 35 + Math.round((seen / total) * 30),
         });
     }
     onProgress({
@@ -493,6 +559,9 @@ function analyze(
           ? "Isolation Forest"
           : "Rules only: fewer than 32 transactions",
         ruleVersion: RULE_VERSION,
+        flowPatterns: flowAnalysis.patterns.length,
+        automaticSeeds: flowAnalysis.counts.automaticSeeds,
+        exposedWallets: flowAnalysis.counts.exposedWallets,
         graphEmbeddingLinks: acceptedEmbeddingLinks.length,
       },
       context,
@@ -505,7 +574,11 @@ function analyze(
     throw error;
   } finally {
     db.exec(
-      "DROP TABLE IF EXISTS temp.embedding_contexts; DROP TABLE IF EXISTS temp.features; DROP TABLE IF EXISTS temp.tx_bursts; DROP TABLE IF EXISTS temp.source_minutes;",
+      `DROP TABLE IF EXISTS temp.embedding_contexts; DROP TABLE IF EXISTS temp.features; DROP TABLE IF EXISTS temp.tx_bursts; DROP TABLE IF EXISTS temp.source_minutes;
+       DROP TABLE IF EXISTS temp.tx_flow_context; DROP TABLE IF EXISTS temp.flow_metrics; DROP TABLE IF EXISTS temp.flow_links;
+       DROP TABLE IF EXISTS temp.flow_input_matches; DROP TABLE IF EXISTS temp.flow_output_matches; DROP TABLE IF EXISTS temp.flow_candidates;
+       DROP TABLE IF EXISTS temp.flow_address_degree; DROP TABLE IF EXISTS temp.flow_outputs; DROP TABLE IF EXISTS temp.flow_inputs;
+       DROP TABLE IF EXISTS temp.flow_first_seen;`,
     );
   }
 }
